@@ -163,10 +163,16 @@ async function init() {
     }, { passive: true });
     renderer.domElement.addEventListener('touchend', e => {
         if (Date.now() - _touchStartTime > 500) return; // too slow — was a drag
-        const dx = e.changedTouches[0].clientX - _touchStartX;
-        const dy = e.changedTouches[0].clientY - _touchStartY;
+        const t  = e.changedTouches[0];
+        const dx = t.clientX - _touchStartX;
+        const dy = t.clientY - _touchStartY;
         if (Math.hypot(dx, dy) > 22) return; // moved too far — was a pan
-        onMouseClick({ clientX: e.changedTouches[0].clientX, clientY: e.changedTouches[0].clientY });
+        // In orbit mode: tap canvas to break orbit instead of using the button
+        if (shipController?.active && shipController?._orbitMode) {
+            shipController._breakOrbit();
+            return;
+        }
+        onMouseClick({ clientX: t.clientX, clientY: t.clientY, _fromTouch: true });
     }, { passive: true });
 
     animate();
@@ -208,21 +214,41 @@ function onWindowResize() {
     if (mobileControls && !shipController?.active) mobileControls.hide();
 }
 
-// ── Click-to-focus raycaster ──────────────────────────────────────────────
+// ── Click/tap-to-focus ────────────────────────────────────────────────────
 function onMouseClick(event) {
     if (shipController?.active) return;
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
+
+    let found = null;
+
+    // Exact mesh intersection (works well on desktop)
     const intersects = raycaster.intersectObjects(planets.map(p => p.mesh));
     if (intersects.length > 0) {
-        const found = planets.find(p => p.mesh === intersects[0].object);
-        if (found) {
-            focusController.focusOn(found.group, found.data);
-            shipController?.setWarpTarget(bodyMap.get(found.data.name));
-            const planetSelect = document.getElementById('planetSelect');
-            if (planetSelect) planetSelect.value = found.data.name.toLowerCase();
-        }
+        found = planets.find(p => p.mesh === intersects[0].object) ?? null;
+    }
+
+    // Touch fallback: project every planet to screen space, pick the closest
+    // one within 48px of the tap — handles small/distant planets reliably
+    if (!found && event._fromTouch) {
+        const _tmp = new THREE.Vector3();
+        let closestDist = 48;
+        planets.forEach(p => {
+            p.group.getWorldPosition(_tmp);
+            _tmp.project(camera);
+            const sx = ( _tmp.x * 0.5 + 0.5) * window.innerWidth;
+            const sy = (-_tmp.y * 0.5 + 0.5) * window.innerHeight;
+            const d  = Math.hypot(sx - event.clientX, sy - event.clientY);
+            if (d < closestDist) { closestDist = d; found = p; }
+        });
+    }
+
+    if (found) {
+        focusController.focusOn(found.group, found.data);
+        shipController?.setWarpTarget(bodyMap.get(found.data.name));
+        const planetSelect = document.getElementById('planetSelect');
+        if (planetSelect) planetSelect.value = found.data.name.toLowerCase();
     }
 }
 

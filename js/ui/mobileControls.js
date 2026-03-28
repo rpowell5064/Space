@@ -5,8 +5,9 @@ const JOYSTICK_RADIUS = 55;   // px — max knob travel
 const LOOK_SCALE      = 0.40; // joystick-px → look-delta scale (tuned down slightly)
 
 // Mirror constants from spaceship.js (must stay in sync)
-const MOBILE_MAX_SPEED     = 6.0;
+const MOBILE_SPEED_STEP    = 5.0;
 const MOBILE_MIN_SPEED     = 1.0;
+const MOBILE_BOOST_MAX     = 100.0;
 const MOBILE_BURN_DURATION = 1.0;
 
 export function initMobileControls(shipController) {
@@ -85,11 +86,11 @@ export function initMobileControls(shipController) {
     }
     tapBtn('mobSpeedUp', () => {
         if (shipController.active && !shipController._orbitMode)
-            shipController._targetSpeed = MOBILE_MAX_SPEED;
+            shipController._targetSpeed = Math.min(shipController._targetSpeed + MOBILE_SPEED_STEP, MOBILE_BOOST_MAX);
     });
     tapBtn('mobSpeedDown', () => {
         if (shipController.active && !shipController._orbitMode)
-            shipController._targetSpeed = MOBILE_MIN_SPEED;
+            shipController._targetSpeed = Math.max(shipController._targetSpeed - MOBILE_SPEED_STEP, MOBILE_MIN_SPEED);
     });
 
     // ── BOOST: triggers burn timer directly (Space is keydown-only, not polled) ──

@@ -380,9 +380,11 @@ export class ShipController {
             if (e.code === 'KeyG' && this.active && this._warpTarget) { e.preventDefault(); this._doWarp(); }
             if (e.code === 'KeyX' && this.active && this._orbitMode) { e.preventDefault(); this._breakOrbit(); }
             if (e.code === 'Space' && this.active && !this._orbitMode && this._burnTimer <= 0 && this._burnCooldown <= 0) { e.preventDefault(); this._burnTimer = BURN_DURATION; }
-            // W/S set cruise speed on press — no holding required
-            if (e.code === 'KeyW' && this.active && !this._orbitMode) this._targetSpeed = MAX_SPEED;
-            if (e.code === 'KeyS' && this.active && !this._orbitMode) this._targetSpeed = MIN_SPEED;
+            // W/S step speed by 5 on each press
+            if (e.code === 'KeyW' && this.active && !this._orbitMode)
+                this._targetSpeed = Math.min(this._targetSpeed + 5, BOOST_MAX);
+            if (e.code === 'KeyS' && this.active && !this._orbitMode)
+                this._targetSpeed = Math.max(this._targetSpeed - 5, MIN_SPEED);
             if (this.active && PREVENT_CODES.includes(e.code)) e.preventDefault();
         });
         window.addEventListener('keyup', e => { this.keys[e.code] = false; });
