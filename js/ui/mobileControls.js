@@ -24,7 +24,6 @@ export function initMobileControls(shipController) {
         </div>
         <div id="mobTopBar">
             <div class="mob-btn" id="mobWarp">WARP</div>
-            <div class="mob-btn" id="mobBreakOrbit">BREAK ORBIT</div>
             <div class="mob-btn" id="mobExit">EXIT FLY</div>
         </div>
         <div id="mobRightBtns">
@@ -78,20 +77,16 @@ export function initMobileControls(shipController) {
     joyZone.addEventListener('touchend',    resetJoy, { passive: false });
     joyZone.addEventListener('touchcancel', resetJoy, { passive: false });
 
-    // ── Speed +/− tap buttons (mirror W / S keydown behavior) ────────────
-    function tapBtn(id, action) {
+    // ── Speed +/− hold buttons — ramp speed while held, same rate as W/S ──
+    let speedUpHeld = false, speedDownHeld = false;
+    function speedHold(id, setHeld) {
         const el = root.querySelector(`#${id}`);
-        el.addEventListener('touchstart', e => { e.preventDefault(); action(); el.classList.add('held'); },    { passive: false });
-        el.addEventListener('touchend',   e => { e.preventDefault(); el.classList.remove('held'); }, { passive: false });
+        el.addEventListener('touchstart',  e => { e.preventDefault(); setHeld(true);  el.classList.add('held');    }, { passive: false });
+        el.addEventListener('touchend',    e => { e.preventDefault(); setHeld(false); el.classList.remove('held'); }, { passive: false });
+        el.addEventListener('touchcancel', e => { e.preventDefault(); setHeld(false); el.classList.remove('held'); }, { passive: false });
     }
-    tapBtn('mobSpeedUp', () => {
-        if (shipController.active && !shipController._orbitMode)
-            shipController._targetSpeed = Math.min(shipController._targetSpeed + MOBILE_SPEED_STEP, MOBILE_BOOST_MAX);
-    });
-    tapBtn('mobSpeedDown', () => {
-        if (shipController.active && !shipController._orbitMode)
-            shipController._targetSpeed = Math.max(shipController._targetSpeed - MOBILE_SPEED_STEP, 0);
-    });
+    speedHold('mobSpeedUp',   v => speedUpHeld   = v);
+    speedHold('mobSpeedDown', v => speedDownHeld = v);
 
     // ── BOOST: triggers burn timer directly (Space is keydown-only, not polled) ──
     const boostEl = root.querySelector('#mobBoost');
@@ -122,9 +117,6 @@ export function initMobileControls(shipController) {
     actionTap('mobWarp', () => {
         if (shipController.active && shipController._warpTarget) shipController._doWarp();
     });
-    actionTap('mobBreakOrbit', () => {
-        if (shipController.active && shipController._orbitMode) shipController._breakOrbit();
-    });
     actionTap('mobExit', () => {
         if (!shipController.active) return;
         shipController.exit();
@@ -133,11 +125,16 @@ export function initMobileControls(shipController) {
     });
 
     // ── Per-frame tick ────────────────────────────────────────────────────
-    function tick() {
+    function tick(dt = 0.016) {
         if (shipController.active) {
             // Always push look delta — sending 0,0 when centered resets _mouseNDC
-            // so the ship flies straight when joystick is released
             shipController.addLookDelta(joyDx * LOOK_SCALE, joyDy * LOOK_SCALE);
+
+            // Ramp speed while +/− held — mirrors W/S rate in spaceship.js
+            if (!shipController._orbitMode) {
+                if (speedUpHeld)   shipController._targetSpeed = Math.min(shipController._targetSpeed + 40 * dt, MOBILE_BOOST_MAX);
+                if (speedDownHeld) shipController._targetSpeed = Math.max(shipController._targetSpeed - 40 * dt, 0);
+            }
         }
         // While orbiting, hide speed/boost/brake — they do nothing until orbit breaks
         root.classList.toggle('orbit-mode', !!(shipController.active && shipController._orbitMode));

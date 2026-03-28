@@ -44,7 +44,6 @@ labelRenderer.domElement.style.top = '0';
 labelRenderer.domElement.style.left = '0';
 labelRenderer.domElement.style.zIndex = '10';
 labelRenderer.domElement.style.pointerEvents = 'none';
-labelRenderer.domElement.style.display = 'none'; // labels off by default
 document.body.appendChild(labelRenderer.domElement);
 
 // ── OrbitControls ─────────────────────────────────────────────────────────
@@ -297,7 +296,7 @@ function animate() {
 
     updateAsteroids(camera.position);
 
-    mobileControls?.tick();
+    mobileControls?.tick(delta);
     focusController.update();
     shipController?.update(delta);
 

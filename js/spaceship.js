@@ -381,10 +381,7 @@ export class ShipController {
             if (e.code === 'KeyX' && this.active && this._orbitMode) { e.preventDefault(); this._breakOrbit(); }
             if (e.code === 'Space' && this.active && !this._orbitMode && this._burnTimer <= 0 && this._burnCooldown <= 0) { e.preventDefault(); this._burnTimer = BURN_DURATION; }
             // W/S step speed by 5 on each press
-            if (e.code === 'KeyW' && this.active && !this._orbitMode)
-                this._targetSpeed = Math.min(this._targetSpeed + 20, BOOST_MAX);
-            if (e.code === 'KeyS' && this.active && !this._orbitMode)
-                this._targetSpeed = Math.max(this._targetSpeed - 20, 0);
+            // W/S handled continuously in update() — no keydown action needed
             if (this.active && PREVENT_CODES.includes(e.code)) e.preventDefault();
         });
         window.addEventListener('keyup', e => { this.keys[e.code] = false; });
@@ -801,7 +798,11 @@ export class ShipController {
              .normalize();
         }
 
-        // Engine force — W/S set _targetSpeed via keydown; engine maintains it automatically.
+        // W/S ramp target speed continuously while held
+        if (k['KeyW'] && !this._orbitMode) this._targetSpeed = Math.min(this._targetSpeed + 40 * dt, BOOST_MAX);
+        if (k['KeyS'] && !this._orbitMode) this._targetSpeed = Math.max(this._targetSpeed - 40 * dt, 0);
+
+        // Engine force — engine maintains _targetSpeed automatically.
         // Braking overrides to zero; burn overshoots then decelerates back to _targetSpeed.
         const fwdVel          = this._vel.dot(forward);
         const postBurnDecel   = !burning && !braking && fwdVel > this._targetSpeed + 0.5;
