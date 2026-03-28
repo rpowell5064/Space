@@ -60,6 +60,7 @@ let _prevElapsed = 0;
 let rotationSpeed = 0.2;
 
 let planets = [];
+let _shipWasActive = false;
 let moons = [];
 let sun = null;
 let orbitLines = [];
@@ -259,6 +260,13 @@ function animate() {
     const elapsed = clock.getElapsedTime();
     const delta   = elapsed - _prevElapsed;
     _prevElapsed  = elapsed;
+
+    // Hide planet labels in flight mode — restored when exiting (handles all exit paths)
+    const shipActive = !!shipController?.active;
+    if (shipActive !== _shipWasActive) {
+        _shipWasActive = shipActive;
+        labelRenderer.domElement.style.display = shipActive ? 'none' : '';
+    }
 
     // Sun shader uniforms — time for animation, pulse for brightness variation
     if (sun && sun._sunMat) {

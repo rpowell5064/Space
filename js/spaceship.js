@@ -569,7 +569,7 @@ export class ShipController {
         this.active = true;
         this.orbitControls.enabled = false;
         this._vel.set(0, 0, 0);
-        this._targetSpeed  = 20;        // one + press above zero; 5 presses reach BOOST_MAX
+        this._targetSpeed  = 0;          // start at rest; hold W/+ to build speed
         this._burnTimer    = 0;
         this._burnCooldown = 0;
         this._orbitCooldown = 2.0;      // prevent instant orbit on entry if near a planet
