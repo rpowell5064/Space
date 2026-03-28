@@ -382,9 +382,9 @@ export class ShipController {
             if (e.code === 'Space' && this.active && !this._orbitMode && this._burnTimer <= 0 && this._burnCooldown <= 0) { e.preventDefault(); this._burnTimer = BURN_DURATION; }
             // W/S step speed by 5 on each press
             if (e.code === 'KeyW' && this.active && !this._orbitMode)
-                this._targetSpeed = Math.min(this._targetSpeed + 5, BOOST_MAX);
+                this._targetSpeed = Math.min(this._targetSpeed + 20, BOOST_MAX);
             if (e.code === 'KeyS' && this.active && !this._orbitMode)
-                this._targetSpeed = Math.max(this._targetSpeed - 5, MIN_SPEED);
+                this._targetSpeed = Math.max(this._targetSpeed - 20, 0);
             if (this.active && PREVENT_CODES.includes(e.code)) e.preventDefault();
         });
         window.addEventListener('keyup', e => { this.keys[e.code] = false; });
@@ -572,9 +572,10 @@ export class ShipController {
         this.active = true;
         this.orbitControls.enabled = false;
         this._vel.set(0, 0, 0);
-        this._targetSpeed  = MIN_SPEED;
+        this._targetSpeed  = 20;        // one + press above zero; 5 presses reach BOOST_MAX
         this._burnTimer    = 0;
         this._burnCooldown = 0;
+        this._orbitCooldown = 2.0;      // prevent instant orbit on entry if near a planet
         this._mouseNDC.set(0, 0);
         this._angVelYaw   = 0;
         this._angVelPitch = 0;
@@ -890,7 +891,7 @@ export class ShipController {
                     `background:linear-gradient(to right,#225588 ${pct.toFixed(0)}%,#112233 ${pct.toFixed(0)}%);` +
                     `margin-left:6px;border-radius:3px;vertical-align:middle"></span>`;
             } else {
-                this._burnRowEl.innerHTML = `<span style="color:#33aa66;letter-spacing:2px">BURN READY</span>`;
+                this._burnRowEl.innerHTML = `<span style="color:#33aa66;letter-spacing:2px">BOOST READY</span>`;
             }
         }
 

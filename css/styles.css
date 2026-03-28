@@ -545,6 +545,18 @@ canvas {
   transform: translateX(-50%);
 }
 
+#hudBurnRow {
+  position: absolute;
+  bottom: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Segoe UI', monospace, sans-serif;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  white-space: nowrap;
+}
+
 #hudHint {
   position: absolute;
   bottom: 22px;
@@ -809,9 +821,16 @@ canvas {
   /* ── Keyboard hint hidden on touch devices ── */
   #hudHint { display: none; }
 
-  /* ── Speed readout: move to bottom-left above the joystick ── */
+  /* ── Speed readout: bottom-left above joystick ── */
   #hudSpeedRow {
     bottom: 130px;
+    left: 20px;
+    transform: none;
+  }
+
+  /* ── Boost meter: above speed row, away from hamburger ── */
+  #hudBurnRow {
+    bottom: 158px;
     left: 20px;
     transform: none;
   }
