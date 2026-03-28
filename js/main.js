@@ -151,6 +151,13 @@ async function init() {
 
     // ── Events ────────────────────────────────────────────────────────────
     window.addEventListener('resize', onWindowResize);
+    // orientationchange fires before the browser has settled on new dimensions;
+    // delay the resize call so innerWidth/Height reflect the rotated viewport.
+    window.addEventListener('orientationchange', () => setTimeout(onWindowResize, 200));
+    // visualViewport is more reliable than resize on modern mobile browsers
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', onWindowResize);
+    }
     renderer.domElement.addEventListener('click', onMouseClick);
 
     // Touch tap-to-focus: OrbitControls swallows touch events so 'click'
