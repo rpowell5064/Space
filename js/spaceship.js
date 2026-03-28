@@ -95,6 +95,8 @@ export class ShipController {
         this.onOrbitEnter  = null;  // (bodyName: string) => void
         this.onOrbitExit   = null;  // () => void
 
+        this._isMobile = navigator.maxTouchPoints > 0;
+
         this.shipGroup = new THREE.Group();
         this.shipGroup.scale.setScalar(SHIP_SCALE);
         this.shipGroup.visible = false;
@@ -121,7 +123,7 @@ export class ShipController {
         this._warpTarget = body;
         if (this._warpHintEl) {
             this._warpHintEl.textContent = body
-                ? `G · WARP TO ${body.name.toUpperCase()}`
+                ? `${this._isMobile ? '' : 'G · '}WARP TO ${body.name.toUpperCase()}`
                 : '';
         }
         // Update crosshair targeting state
@@ -476,7 +478,7 @@ export class ShipController {
         this._orbitBody = null;
         if (this._orbitStatEl) this._orbitStatEl.textContent = '';
         if (this._warpHintEl && this._warpTarget) {
-            this._warpHintEl.textContent = `G · WARP TO ${this._warpTarget.name.toUpperCase()}`;
+            this._warpHintEl.textContent = `${this._isMobile ? '' : 'G · '}WARP TO ${this._warpTarget.name.toUpperCase()}`;
         }
         this._mouseNDC.set(0, 0);
     }
@@ -594,7 +596,7 @@ export class ShipController {
 
         // Refresh warp hint
         if (this._warpTarget && this._warpHintEl) {
-            this._warpHintEl.textContent = `G · WARP TO ${this._warpTarget.name.toUpperCase()}`;
+            this._warpHintEl.textContent = `${this._isMobile ? '' : 'G · '}WARP TO ${this._warpTarget.name.toUpperCase()}`;
         }
 
         this._hud.style.display = 'block';
@@ -727,7 +729,7 @@ export class ShipController {
             if (this._orbitStatEl) {
                 this._orbitStatEl.innerHTML =
                     `⊙ ORBITING ${this._orbitBody.name.toUpperCase()}<br>` +
-                    `<span style="font-size:0.60rem;color:#ffcc44;letter-spacing:2px">[ X ] BREAK ORBIT</span>`;
+                    `<span style="font-size:0.60rem;color:#ffcc44;letter-spacing:2px">${this._isMobile ? 'TAP BREAK ORBIT' : '[ X ] BREAK ORBIT'}</span>`;
             }
             if (this._warpHintEl) this._warpHintEl.textContent = '';
             return;
