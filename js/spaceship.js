@@ -710,6 +710,7 @@ export class ShipController {
             this.camera.lookAt(this._camLookAt);
 
             // Idle engine particles
+            const prograde = new THREE.Vector3(-Math.sin(this._orbitAngle), 0, Math.cos(this._orbitAngle));
             this._spawnParticles(0, prograde, 0, 0);
             this._tickParticles();
 
