@@ -663,13 +663,81 @@ canvas {
   box-shadow: 0 0 10px rgba(50, 160, 255, 0.40);
 }
 
-/* On small screens compress the desktop UI panel */
-@media (max-width: 600px) {
+/* ── Mobile landscape — compact UI ─────────────────────────────────────── */
+@media (max-width: 900px) and (orientation: landscape) {
   #uiContainer {
-    top: 10px;
-    left: 10px;
-    padding: 10px 12px;
-    max-width: 200px;
-    font-size: 0.85rem;
+    top: 8px;
+    left: 8px;
+    padding: 7px 10px;
+    max-width: 170px;
+    font-size: 0.72rem;
+    border-radius: 8px;
   }
+  #uiContainer h1 {
+    font-size: 0.78rem;
+    margin: 0 0 6px;
+    letter-spacing: 1px;
+  }
+  #planetSelector label,
+  #speedControl label {
+    font-size: 0.65rem;
+    letter-spacing: 0.5px;
+  }
+  #planetSelect,
+  #spinSpeed {
+    font-size: 0.70rem;
+    width: 100%;
+  }
+  #speedValue { font-size: 0.65rem; }
+  #labelsBtn, #orbitsBtn, #flyBtn {
+    font-size: 0.60rem;
+    padding: 5px 0;
+    letter-spacing: 2px;
+    margin-top: 5px;
+  }
+
+  /* Mobile controls — tighter joystick and buttons */
+  #mobJoyZone {
+    width: 90px;
+    height: 90px;
+    bottom: 28px;
+    left: 18px;
+  }
+  #mobJoyKnob {
+    width: 34px;
+    height: 34px;
+  }
+  #mobRightBtns {
+    bottom: 28px;
+    right: 14px;
+    gap: 7px;
+  }
+  .mob-btn {
+    padding: 9px 12px;
+    font-size: 0.52rem;
+    letter-spacing: 1.5px;
+  }
+  #mobThrust {
+    padding: 12px 16px;
+    font-size: 0.58rem;
+    min-width: 76px;
+  }
+  #mobTopBar {
+    top: 10px;
+    right: 10px;
+    gap: 6px;
+  }
+
+  /* Focus panel — smaller on mobile */
+  #focusPanel {
+    width: 210px;
+    padding: 14px 14px 12px;
+    bottom: 16px;
+    right: 16px;
+    font-size: 0.80rem;
+  }
+  .focus-header #focusPlanetName { font-size: 1.0rem; }
+  .stat-label  { font-size: 0.58rem; }
+  .stat-value  { font-size: 0.78rem; }
+  .focus-desc  { font-size: 0.70rem; }
 }

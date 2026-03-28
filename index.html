@@ -3,10 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* Portrait-mode overlay — prompts user to rotate */
+        #rotatePrompt {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            background: #000010;
+            color: #88ccff;
+            font-family: 'Segoe UI', monospace, sans-serif;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            text-align: center;
+            padding: 24px;
+        }
+        #rotatePrompt svg { width: 64px; height: 64px; opacity: 0.7; animation: rotateHint 2s ease-in-out infinite; }
+        @keyframes rotateHint {
+            0%, 100% { transform: rotate(0deg); }
+            50%       { transform: rotate(90deg); }
+        }
+        #rotatePrompt p { font-size: 0.85rem; letter-spacing: 2px; text-transform: uppercase; color: #4488bb; margin: 0; }
+        @media (max-width: 767px) and (orientation: portrait) {
+            #rotatePrompt { display: flex; }
+        }
+    </style>
     <title>Solar System 3D Explorer</title>
     <link rel="stylesheet" href="./css/styles.css">
 </head>
 <body>
+    <!-- Portrait-mode rotate prompt -->
+    <div id="rotatePrompt">
+        <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="16" y="8" width="32" height="48" rx="4" stroke="#88ccff" stroke-width="2.5"/>
+            <circle cx="32" cy="50" r="2.5" fill="#88ccff"/>
+            <path d="M26 20 L38 20 M32 14 L32 26" stroke="#88ccff" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <p>Rotate device to landscape</p>
+    </div>
+
     <div id="uiContainer">
         <h1>Solar System Explorer</h1>
         <div id="planetSelector">
