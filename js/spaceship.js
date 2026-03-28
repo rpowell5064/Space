@@ -30,6 +30,10 @@ const AD_YAW_RATE      = 1.2;  // extra yaw from A/D keys (rad/s)
 const ROLL_RATE        = 0.025;
 const ARROW_RATE       = 0.016;
 
+// Inversion — always inverted (cursor/joystick up → nose down, right → nose left)
+const PITCH_SIGN = -1;
+const YAW_SIGN   = -1;
+
 // Camera
 const CAM_OFFSET     = new THREE.Vector3(0, 0.22, 0.50);
 const CAM_LERP       = 0.18;
@@ -762,8 +766,8 @@ export class ShipController {
         // cursor input has any effect. Prevents out-of-control spinning at entry.
         const steerActive = (burning || curSpd > 0.3) && this._cursorInWindow;
         const adInput     = (k['KeyA'] ? 1 : 0) - (k['KeyD'] ? 1 : 0);
-        const desiredYaw   = steerActive ? -this._mouseNDC.x * TURN_RATE_MAX + adInput * AD_YAW_RATE : 0;
-        const desiredPitch = steerActive ? -this._mouseNDC.y * TURN_RATE_MAX : 0;
+        const desiredYaw   = steerActive ? YAW_SIGN   * this._mouseNDC.x * TURN_RATE_MAX + adInput * AD_YAW_RATE : 0;
+        const desiredPitch = steerActive ? PITCH_SIGN * this._mouseNDC.y * TURN_RATE_MAX : 0;
 
         this._angVelYaw   += (desiredYaw   - this._angVelYaw)   * ANGULAR_RESPONSE * dt;
         this._angVelPitch += (desiredPitch - this._angVelPitch) * ANGULAR_RESPONSE * dt;
