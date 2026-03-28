@@ -10,8 +10,30 @@
  * @param {Array}    opts.orbitLines    - array of THREE.Line objects
  */
 export function initControls({ onPlanetSelect, onSpeedChange, onFly, onClosePanel, labelRenderer, orbitLines }) {
+    const uiContainer  = document.getElementById('uiContainer');
+    const menuToggle   = document.getElementById('menuToggle');
+    const uiClose      = document.getElementById('uiClose');
+
+    function closePanel() {
+        uiContainer?.classList.remove('open');
+        menuToggle?.classList.remove('open');
+    }
+    if (menuToggle) {
+        menuToggle.addEventListener('click', () => {
+            const isOpen = uiContainer?.classList.toggle('open');
+            menuToggle.classList.toggle('open', isOpen);
+        });
+    }
+    if (uiClose) uiClose.addEventListener('click', closePanel);
+
     const planetSelect = document.getElementById('planetSelect');
-    if (planetSelect) planetSelect.addEventListener('change', onPlanetSelect);
+    if (planetSelect) {
+        planetSelect.addEventListener('change', e => {
+            onPlanetSelect(e);
+            // Auto-close the panel on mobile after selecting a planet
+            if (window.matchMedia('(max-width: 900px)').matches) closePanel();
+        });
+    }
 
     const spinSpeedSlider = document.getElementById('spinSpeed');
     if (spinSpeedSlider) spinSpeedSlider.addEventListener('input', onSpeedChange);
@@ -38,6 +60,7 @@ export function initControls({ onPlanetSelect, onSpeedChange, onFly, onClosePane
     if (flyBtn) {
         flyBtn.addEventListener('click', () => {
             onFly(flyBtn);
+            if (window.matchMedia('(max-width: 900px)').matches) closePanel();
         });
     }
 

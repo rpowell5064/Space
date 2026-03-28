@@ -44,10 +44,16 @@
         <p>Rotate device to landscape</p>
     </div>
 
+    <!-- Mobile menu toggle (hidden on desktop) -->
+    <button id="menuToggle" aria-label="Toggle menu">&#9776;</button>
+
     <div id="uiContainer">
-        <h1>Solar System Explorer</h1>
+        <div id="uiHeader">
+            <h1>Solar System</h1>
+            <button id="uiClose" aria-label="Close menu">&#10005;</button>
+        </div>
         <div id="planetSelector">
-            <label for="planet-select">Select a planet to focus:</label>
+            <label for="planet-select">Focus</label>
             <select id="planetSelect">
                 <option value="">-- View All --</option>
                 <option value="sun">Sun</option>
@@ -62,13 +68,14 @@
             </select>
         </div>
         <div id="speedControl">
-            <label for="spinSpeed">Orbit Speed:</label>
+            <label for="spinSpeed">Speed <span id="speedValue">0.2x</span></label>
             <input type="range" id="spinSpeed" min="0" max="10" step="0.1" value="0.2">
-            <span id="speedValue">0.2x</span>
         </div>
-        <button id="labelsBtn" title="Toggle planet labels">⊙ LABELS</button>
-        <button id="orbitsBtn" title="Toggle orbit lines">⊙ ORBITS</button>
-        <button id="flyBtn" title="Press F to toggle">&#9658; FLY</button>
+        <div id="uiBtnRow">
+            <button id="labelsBtn" title="Toggle planet labels">LABELS</button>
+            <button id="orbitsBtn" title="Toggle orbit lines">ORBITS</button>
+        </div>
+        <button id="flyBtn" title="Press F to toggle">&#9658; FLY MODE</button>
     </div>
 
     <div id="focusPanel">

@@ -15,17 +15,62 @@ canvas {
   height: 100%;
 }
 
+/* ── Menu toggle button (mobile only) ──────────────────────────────────── */
+#menuToggle {
+  display: none; /* hidden on desktop */
+}
+
+/* ── Close button inside panel (mobile only) ────────────────────────────── */
+#uiClose {
+  display: none;
+}
+
+/* ── UI header row ───────────────────────────────────────────────────────── */
+#uiHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+#uiHeader h1 {
+  margin: 0;
+  font-size: 1rem;
+  color: #6eb8ff;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+/* ── Inline label+value for speed ───────────────────────────────────────── */
+#speedControl label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: #9ca3af;
+  margin-bottom: 4px;
+}
+#speedValue { color: #6eb8ff; }
+
+/* ── Button row (labels + orbits side by side) ──────────────────────────── */
+#uiBtnRow {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+#uiBtnRow button {
+  flex: 1;
+}
+
 #uiContainer {
   position: fixed;
   top: 20px;
   left: 20px;
   z-index: 200;
-  background: rgba(0, 0, 10, 0.75);
+  background: rgba(0, 0, 10, 0.80);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(100, 150, 255, 0.2);
   border-radius: 12px;
-  padding: 16px;
-  max-width: 260px;
+  padding: 14px 16px;
+  width: 220px;
   color: white;
 }
 
@@ -55,9 +100,9 @@ canvas {
 .controls h2 {
   margin-top: 0;
   color: #6eb8ff;
-  font-size: 1.5rem;
+  font-size: 1.1rem;
   border-bottom: 1px solid #2a2a3b;
-  padding-bottom: 15px;
+  padding-bottom: 10px;
   text-transform: uppercase;
   letter-spacing: 2px;
 }
@@ -663,81 +708,108 @@ canvas {
   box-shadow: 0 0 10px rgba(50, 160, 255, 0.40);
 }
 
-/* ── Mobile landscape — compact UI ─────────────────────────────────────── */
-@media (max-width: 900px) and (orientation: landscape) {
-  #uiContainer {
-    top: 8px;
-    left: 8px;
-    padding: 7px 10px;
-    max-width: 170px;
-    font-size: 0.72rem;
+/* ── Mobile (phones/small tablets, any orientation) ────────────────────── */
+@media (max-width: 900px) {
+
+  /* ── Menu toggle button ── */
+  #menuToggle {
+    display: block;
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 300;
+    width: 38px;
+    height: 38px;
+    background: rgba(0, 0, 20, 0.82);
+    border: 1px solid rgba(80, 150, 255, 0.35);
     border-radius: 8px;
+    color: #88ccff;
+    font-size: 1.1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
   }
-  #uiContainer h1 {
-    font-size: 0.78rem;
-    margin: 0 0 6px;
-    letter-spacing: 1px;
-  }
-  #planetSelector label,
-  #speedControl label {
-    font-size: 0.65rem;
-    letter-spacing: 0.5px;
-  }
-  #planetSelect,
-  #spinSpeed {
-    font-size: 0.70rem;
-    width: 100%;
-  }
-  #speedValue { font-size: 0.65rem; }
-  #labelsBtn, #orbitsBtn, #flyBtn {
-    font-size: 0.60rem;
-    padding: 5px 0;
-    letter-spacing: 2px;
-    margin-top: 5px;
+  #menuToggle.open {
+    background: rgba(20, 60, 140, 0.90);
+    border-color: rgba(80, 180, 255, 0.70);
   }
 
-  /* Mobile controls — tighter joystick and buttons */
-  #mobJoyZone {
-    width: 90px;
-    height: 90px;
-    bottom: 28px;
-    left: 18px;
+  /* ── Settings panel: hidden until toggled ── */
+  #uiContainer {
+    display: none;
+    top: 58px;
+    left: 12px;
+    width: 200px;
+    padding: 12px 14px;
+    font-size: 0.80rem;
+    border-radius: 10px;
+    z-index: 250;
   }
-  #mobJoyKnob {
-    width: 34px;
-    height: 34px;
+  #uiContainer.open {
+    display: block;
   }
-  #mobRightBtns {
-    bottom: 28px;
-    right: 14px;
-    gap: 7px;
+
+  /* Show the in-panel close button on mobile */
+  #uiClose {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: 1px solid rgba(80, 150, 255, 0.25);
+    border-radius: 4px;
+    color: #557799;
+    font-size: 0.75rem;
+    width: 22px;
+    height: 22px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
   }
-  .mob-btn {
-    padding: 9px 12px;
-    font-size: 0.52rem;
+
+  #uiHeader h1 { font-size: 0.80rem; letter-spacing: 1px; }
+
+  #planetSelector label { font-size: 0.68rem; display: block; margin-bottom: 4px; }
+  #planetSelect { font-size: 0.72rem; width: 100%; }
+
+  #spinSpeed { width: 100%; }
+  #speedControl label { font-size: 0.68rem; }
+
+  #uiBtnRow button,
+  #labelsBtn, #orbitsBtn {
+    font-size: 0.58rem;
+    padding: 6px 4px;
     letter-spacing: 1.5px;
   }
-  #mobThrust {
-    padding: 12px 16px;
-    font-size: 0.58rem;
-    min-width: 76px;
-  }
-  #mobTopBar {
-    top: 10px;
-    right: 10px;
-    gap: 6px;
+  #flyBtn {
+    font-size: 0.62rem;
+    padding: 7px 0;
+    letter-spacing: 2px;
+    margin-top: 8px;
   }
 
-  /* Focus panel — smaller on mobile */
+  /* ── Focus panel: compact chip, won't cover the planet ── */
   #focusPanel {
-    width: 210px;
-    padding: 14px 14px 12px;
-    bottom: 16px;
-    right: 16px;
-    font-size: 0.80rem;
+    width: auto;
+    max-width: 230px;
+    bottom: 12px;
+    right: 12px;
+    padding: 10px 12px 8px;
+    border-radius: 6px;
   }
-  .focus-header #focusPlanetName { font-size: 1.0rem; }
-  .stat-label  { font-size: 0.58rem; }
-  .stat-value  { font-size: 0.78rem; }
-  .focus-desc  { font-size: 0.70rem; }
+  .focus-header #focusPlanetName { font-size: 0.95rem; letter-spacing: 1.5px; }
+  .focus-type { font-size: 0.62rem; margin-bottom: 8px; }
+  .focus-stats { gap: 5px; padding: 8px 0; margin-bottom: 8px; }
+  .stat-label  { font-size: 0.56rem; }
+  .stat-value  { font-size: 0.74rem; }
+  /* Hide description on mobile — too much text, covers planet */
+  .focus-desc  { display: none; }
+
+  /* ── Mobile fly controls — tighter ── */
+  #mobJoyZone  { width: 88px; height: 88px; bottom: 24px; left: 16px; }
+  #mobJoyKnob  { width: 32px; height: 32px; }
+  #mobRightBtns { bottom: 24px; right: 12px; gap: 6px; }
+  .mob-btn     { padding: 9px 11px; font-size: 0.50rem; letter-spacing: 1.5px; }
+  #mobThrust   { padding: 12px 14px; font-size: 0.56rem; min-width: 72px; }
+  #mobTopBar   { top: 10px; right: 10px; gap: 5px; }
 }
