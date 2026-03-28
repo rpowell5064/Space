@@ -506,10 +506,11 @@ export class ShipController {
         this._angVelRoll  = 0;
 
         // Snap camera behind ship facing prograde — no disorienting lerp from orbit position
+        const progradeFwd = new THREE.Vector3(-Math.sin(this._orbitAngle), 0, Math.cos(this._orbitAngle));
         const q      = this.shipGroup.quaternion;
         const camOff = CAM_OFFSET.clone().applyQuaternion(q);
         this.camera.position.copy(this.shipGroup.position).add(camOff);
-        this._camLookAt.copy(this.shipGroup.position.clone().addScaledVector(prograde, 10));
+        this._camLookAt.copy(this.shipGroup.position.clone().addScaledVector(progradeFwd, 10));
         this.camera.lookAt(this._camLookAt);
 
         this._exitOrbit();

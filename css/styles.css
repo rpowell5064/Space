@@ -835,8 +835,9 @@ canvas {
     transform: none;
   }
 
-  /* ── Orbit mode: hide speed+boost+brake (not usable while orbiting) ── */
+  /* ── Orbit mode: hide speed+boost+brake and warp (not usable while orbiting) ── */
   #mobileControls.orbit-mode #mobRightBtns { display: none; }
+  #mobileControls.orbit-mode #mobWarp { display: none; }
 
   /* ── Planet labels — smaller on mobile ── */
   .planet-label {
