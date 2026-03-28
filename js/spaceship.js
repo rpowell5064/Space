@@ -485,13 +485,9 @@ export class ShipController {
     // Break orbit — give the ship prograde velocity so it flies away naturally
     _breakOrbit() {
         if (!this._orbitMode) return;
-        // Orient ship nose (-Z) along prograde
-        const prograde = new THREE.Vector3(
-            -Math.sin(this._orbitAngle),
-            0,
-            Math.cos(this._orbitAngle)
-        ).normalize();
-        this.shipGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), prograde);
+        // Orient ship nose (-Z) along prograde — Y rotation of (π - orbitAngle) is exact;
+        // avoids the antiparallel edge case of setFromUnitVectors when orbitAngle ≈ 0.
+        this.shipGroup.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI - this._orbitAngle);
 
         // Move ship to just outside the orbit-trigger radius so it doesn't instantly re-enter
         const bodyPos  = this._orbitBody.getPosition();
@@ -693,14 +689,7 @@ export class ShipController {
             this.shipGroup.position.set(x, y, z);
 
             // Ship nose (-Z) faces prograde — tangent to orbit
-            const prograde = new THREE.Vector3(
-                -Math.sin(this._orbitAngle),
-                0,
-                Math.cos(this._orbitAngle)
-            ).normalize();
-            this.shipGroup.quaternion.setFromUnitVectors(
-                new THREE.Vector3(0, 0, -1), prograde
-            );
+            this.shipGroup.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI - this._orbitAngle);
 
             // ── Cinematic camera ──────────────────────────────────────────
             // Camera is placed directly behind and slightly above the ship each
