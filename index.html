@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solar System 3D Explorer</title>
+    <link rel="stylesheet" href="./css/styles.css">
+</head>
+<body>
+    <div id="uiContainer">
+        <h1>Solar System Explorer</h1>
+        <div id="planetSelector">
+            <label for="planet-select">Select a planet to focus:</label>
+            <select id="planetSelect">
+                <option value="">-- View All --</option>
+                <option value="sun">Sun</option>
+                <option value="mercury">Mercury</option>
+                <option value="venus">Venus</option>
+                <option value="earth">Earth</option>
+                <option value="mars">Mars</option>
+                <option value="jupiter">Jupiter</option>
+                <option value="saturn">Saturn</option>
+                <option value="uranus">Uranus</option>
+                <option value="neptune">Neptune</option>
+            </select>
+        </div>
+        <div id="speedControl">
+            <label for="spinSpeed">Orbit Speed:</label>
+            <input type="range" id="spinSpeed" min="0" max="10" step="0.1" value="0.2">
+            <span id="speedValue">0.2x</span>
+        </div>
+        <button id="labelsBtn" title="Toggle planet labels">⊙ LABELS</button>
+        <button id="orbitsBtn" title="Toggle orbit lines">⊙ ORBITS</button>
+        <button id="flyBtn" title="Press F to toggle">&#9658; FLY</button>
+    </div>
+
+    <div id="focusPanel">
+        <span class="fc-tl"></span>
+        <span class="fc-tr"></span>
+        <span class="fc-bl"></span>
+        <span class="fc-br"></span>
+        <div class="focus-header">
+            <span id="focusPlanetName">—</span>
+            <button id="focusClose" aria-label="Close">✕</button>
+        </div>
+        <div id="focusPlanetType" class="focus-type">—</div>
+        <div class="focus-stats">
+            <div class="stat-row">
+                <span class="stat-label">DIAMETER</span>
+                <span class="stat-value" id="focusDiameter">—</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label">DAY LENGTH</span>
+                <span class="stat-value" id="focusDayLength">—</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label">ORBITAL PERIOD</span>
+                <span class="stat-value" id="focusOrbitalPeriod">—</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label">MOONS</span>
+                <span class="stat-value" id="focusMoons">—</span>
+            </div>
+        </div>
+        <p id="focusDescription" class="focus-desc">—</p>
+    </div>
+
+    <div id="canvasContainer"></div>
+
+    <script type="module" src="./js/main.js"></script>
+</body>
+</html>

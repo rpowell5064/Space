@@ -1,0 +1,675 @@
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #0a0a12;
+  color: #ffffff;
+  overflow: hidden;
+}
+
+canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#uiContainer {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  z-index: 200;
+  background: rgba(0, 0, 10, 0.75);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(100, 150, 255, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+  max-width: 260px;
+  color: white;
+}
+
+.container {
+  display: flex;
+  flex-direction: row;
+  height: 100vh;
+  width: 100vw;
+}
+
+.viewport {
+  flex-grow: 1;
+  position: relative;
+  background-color: #000000;
+}
+
+.controls {
+  width: 320px;
+  background-color: #13131f;
+  border-left: 1px solid #2a2a3b;
+  padding: 20px;
+  box-shadow: -5px 0 15px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+}
+
+.controls h2 {
+  margin-top: 0;
+  color: #6eb8ff;
+  font-size: 1.5rem;
+  border-bottom: 1px solid #2a2a3b;
+  padding-bottom: 15px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.controls h3 {
+  margin-top: 25px;
+  font-size: 1.1rem;
+  color: #9ca3af;
+  text-transform: uppercase;
+  font-size: 0.9rem;
+}
+
+.planet-list {
+  list-style: none;
+  padding: 0;
+  margin-top: 10px;
+  flex-grow: 1;
+  overflow-y: auto;
+}
+
+.planet-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 15px;
+  margin-bottom: 10px;
+  background: #1a1a27;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid #2a2a3b;
+}
+
+.planet-item:hover {
+  background: #242438;
+  border-color: #4a4a6b;
+}
+
+.planet-item.active {
+  background: #252545;
+  border-color: #6eb8ff;
+  box-shadow: 0 0 10px rgba(110, 184, 255, 0.3);
+}
+
+.planet-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  margin-right: 15px;
+  flex-shrink: 0;
+}
+
+.planet-name {
+  font-weight: 600;
+  font-size: 1rem;
+  flex-grow: 1;
+}
+
+.planet-info {
+  font-size: 0.85rem;
+  color: #9ca3af;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.button {
+  background-color: #2a2a3b;
+  color: #e2e8f0;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  margin-top: 15px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.button:hover {
+  background-color: #3a3a55;
+}
+
+.button:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px #6eb8ff;
+}
+
+.info-panel {
+  background-color: #1a1a27;
+  padding: 15px;
+  border-radius: 8px;
+  margin-top: auto;
+  font-size: 0.9rem;
+  border: 1px solid #2a2a3b;
+}
+
+.info-panel p {
+  margin: 5px 0;
+  line-height: 1.5;
+  color: #d1d5db;
+}
+
+.key {
+  background-color: #2a2a3b;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: #6eb8ff;
+}
+
+#loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+#loading p {
+  margin-top: 10px;
+  color: #9ca3af;
+}
+
+#loading .spinner {
+  width: 50px;
+  height: 50px;
+  border: 5px solid rgba(110, 184, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: #6eb8ff;
+  animation: spin 1s ease-in-out infinite;
+  margin: 0 auto 10px auto;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Floating planet labels (CSS2DRenderer) ─────────────────────────────── */
+.planet-label {
+  color: #cceeff;
+  font-family: 'Segoe UI', monospace, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  padding: 4px 10px;
+  background: rgba(0, 10, 35, 0.8);
+  border: 1px solid rgba(80, 180, 255, 0.55);
+  border-radius: 3px;
+  pointer-events: none;
+  user-select: none;
+  text-shadow: 0 0 12px rgba(100, 220, 255, 1.0), 0 0 4px rgba(80,180,255,0.8);
+  white-space: nowrap;
+  box-shadow: 0 0 8px rgba(60, 150, 255, 0.25);
+}
+
+/* ── Futuristic focus panel ─────────────────────────────────────────────── */
+#focusPanel {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  z-index: 200;
+  width: 310px;
+  background: rgba(0, 6, 22, 0.88);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(50, 140, 255, 0.35);
+  border-radius: 4px;
+  padding: 22px 22px 18px;
+  color: #e0eeff;
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Scan-line shimmer */
+#focusPanel::before {
+  content: '';
+  position: absolute;
+  top: -100%;
+  left: 0;
+  width: 100%;
+  height: 40%;
+  background: linear-gradient(to bottom, rgba(60,160,255,0) 0%, rgba(60,160,255,0.04) 50%, rgba(60,160,255,0) 100%);
+  animation: scanline 4s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes scanline {
+  0%   { top: -40%; }
+  100% { top: 110%; }
+}
+
+/* Corner bracket accents */
+.fc-tl, .fc-tr, .fc-bl, .fc-br {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-color: #44aaff;
+  border-style: solid;
+}
+.fc-tl { top: 0;  left: 0;  border-width: 2px 0 0 2px; }
+.fc-tr { top: 0;  right: 0; border-width: 2px 2px 0 0; }
+.fc-bl { bottom: 0; left: 0;  border-width: 0 0 2px 2px; }
+.fc-br { bottom: 0; right: 0; border-width: 0 2px 2px 0; }
+
+.focus-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.focus-header #focusPlanetName {
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #aaddff;
+  text-shadow: 0 0 14px rgba(100,200,255,0.7);
+}
+
+#focusClose {
+  background: none;
+  border: 1px solid rgba(80,160,255,0.3);
+  border-radius: 3px;
+  color: #6699bb;
+  font-size: 0.85rem;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s, border-color 0.2s;
+}
+#focusClose:hover {
+  color: #aaddff;
+  border-color: rgba(80,160,255,0.7);
+}
+
+.focus-type {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #4488bb;
+  margin-bottom: 16px;
+}
+
+.focus-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+  border-top: 1px solid rgba(50,120,220,0.2);
+  border-bottom: 1px solid rgba(50,120,220,0.2);
+  padding: 12px 0;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.stat-label {
+  font-size: 0.65rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #4477aa;
+}
+
+.stat-value {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #99ccee;
+  text-align: right;
+}
+
+.focus-desc {
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: #7799bb;
+  margin: 0;
+}
+
+/* ── Fly button in control panel ────────────────────────────────────────── */
+#flyBtn {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  padding: 9px 0;
+  background: rgba(15, 40, 90, 0.85);
+  border: 1px solid rgba(60, 140, 255, 0.45);
+  border-radius: 4px;
+  color: #88ccff;
+  font-family: 'Segoe UI', monospace, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s;
+}
+#flyBtn:hover {
+  background: rgba(20, 60, 130, 0.90);
+  border-color: rgba(80, 180, 255, 0.75);
+  color: #bbddff;
+  box-shadow: 0 0 12px rgba(60, 150, 255, 0.30);
+}
+#flyBtn.active {
+  background: rgba(10, 80, 170, 0.95);
+  border-color: rgba(80, 200, 255, 0.90);
+  color: #cceeff;
+  box-shadow: 0 0 18px rgba(50, 170, 255, 0.50);
+}
+
+/* ── Flight-mode HUD ────────────────────────────────────────────────────── */
+#shipHUD {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 500;
+  font-family: 'Segoe UI', monospace, sans-serif;
+  color: #88ccff;
+  user-select: none;
+}
+
+#hudMode {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.70rem;
+  font-weight: 700;
+  letter-spacing: 5px;
+  color: #44aaff;
+  text-shadow: 0 0 14px rgba(60, 160, 255, 0.90);
+  animation: hudPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes hudPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.60; }
+}
+
+#hudSpeedRow {
+  position: absolute;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+#hudSpdLabel {
+  font-size: 0.58rem;
+  letter-spacing: 3px;
+  color: #336688;
+}
+
+#hudSpdVal {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: #55aaee;
+  text-shadow: 0 0 16px rgba(50, 150, 255, 0.80);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Crosshair */
+#hudCrosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  border: 1.5px solid rgba(80, 170, 255, 0.55);
+  border-radius: 50%;
+}
+#hudCrosshair > div {
+  position: absolute;
+  background: rgba(80, 170, 255, 0.55);
+}
+#hudCrosshair > div::before,
+#hudCrosshair > div::after {
+  content: '';
+  position: absolute;
+  background: rgba(80, 170, 255, 0.55);
+}
+/* horizontal line */
+#hudCrosshair::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -8px;
+  width: 40px;
+  height: 1px;
+  background: rgba(80, 170, 255, 0.40);
+  transform: translateY(-50%);
+}
+/* vertical line */
+#hudCrosshair::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -8px;
+  height: 40px;
+  width: 1px;
+  background: rgba(80, 170, 255, 0.40);
+  transform: translateX(-50%);
+}
+
+#hudHint {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.58rem;
+  letter-spacing: 1.5px;
+  color: rgba(80, 140, 200, 0.65);
+  white-space: nowrap;
+}
+
+/* Target distance readout — appears below crosshair when locked */
+#hudTargetDist {
+  position: absolute;
+  top: 55%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #44ccff;
+  text-shadow: 0 0 10px rgba(40, 200, 255, 0.70);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Crosshair — target locked state */
+#hudCrosshair.targeting {
+  border-color: rgba(40, 220, 255, 0.90);
+  box-shadow: 0 0 8px rgba(40, 200, 255, 0.60), inset 0 0 4px rgba(40, 200, 255, 0.20);
+  animation: crosshairPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes crosshairPulse {
+  0%, 100% { border-color: rgba(40, 220, 255, 0.90); box-shadow: 0 0 8px rgba(40, 200, 255, 0.60), inset 0 0 4px rgba(40, 200, 255, 0.20); }
+  50%       { border-color: rgba(80, 255, 255, 1.00); box-shadow: 0 0 16px rgba(60, 230, 255, 0.85), inset 0 0 8px rgba(60, 230, 255, 0.35); }
+}
+
+#hudWarpHint {
+  position: absolute;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.62rem;
+  letter-spacing: 2px;
+  color: rgba(100, 220, 255, 0.80);
+  text-shadow: 0 0 10px rgba(80, 200, 255, 0.60);
+  white-space: nowrap;
+  animation: hudPulse 2.4s ease-in-out infinite;
+}
+
+#hudOrbitStatus {
+  position: absolute;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.70rem;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: #55ffcc;
+  text-shadow: 0 0 14px rgba(80, 255, 200, 0.80);
+  white-space: nowrap;
+  text-align: center;
+  line-height: 1.8;
+}
+
+/* Corner bracket frame when flying */
+#shipHUD::before,
+#shipHUD::after {
+  content: '';
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border-color: rgba(60, 140, 255, 0.30);
+  border-style: solid;
+}
+#shipHUD::before {
+  top: 14px;
+  left: 14px;
+  border-width: 1.5px 0 0 1.5px;
+}
+#shipHUD::after {
+  bottom: 14px;
+  right: 14px;
+  border-width: 0 1.5px 1.5px 0;
+}
+
+/* ── Mobile controls overlay ────────────────────────────────────────────── */
+#mobileControls {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 600;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Virtual joystick — bottom-left */
+#mobJoyZone {
+  position: absolute;
+  bottom: 44px;
+  left: 28px;
+  width: 120px;
+  height: 120px;
+  pointer-events: auto;
+  touch-action: none;
+}
+#mobJoyBase {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(80, 170, 255, 0.28);
+  background: rgba(10, 40, 100, 0.22);
+}
+#mobJoyKnob {
+  position: absolute;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: rgba(50, 130, 255, 0.42);
+  border: 2px solid rgba(90, 190, 255, 0.70);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 14px rgba(50, 150, 255, 0.40);
+  will-change: transform;
+}
+
+/* Top bar — warp / break orbit / exit */
+#mobTopBar {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  gap: 8px;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+/* Right-side action buttons */
+#mobRightBtns {
+  position: absolute;
+  bottom: 44px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  pointer-events: auto;
+  touch-action: none;
+}
+.mob-row {
+  display: flex;
+  gap: 8px;
+}
+
+/* Shared button style */
+.mob-btn {
+  padding: 13px 18px;
+  border-radius: 6px;
+  background: rgba(8, 25, 70, 0.78);
+  border: 1px solid rgba(60, 140, 255, 0.40);
+  color: #88ccff;
+  font-family: 'Segoe UI', monospace, sans-serif;
+  font-size: 0.60rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+  white-space: nowrap;
+}
+#mobThrust {
+  padding: 18px 22px;
+  font-size: 0.68rem;
+  min-width: 100px;
+  text-align: center;
+}
+.mob-btn.held,
+.mob-btn:active {
+  background: rgba(20, 65, 170, 0.90);
+  border-color: rgba(80, 200, 255, 0.85);
+  color: #cceeff;
+  box-shadow: 0 0 10px rgba(50, 160, 255, 0.40);
+}
+
+/* On small screens compress the desktop UI panel */
+@media (max-width: 600px) {
+  #uiContainer {
+    top: 10px;
+    left: 10px;
+    padding: 10px 12px;
+    max-width: 200px;
+    font-size: 0.85rem;
+  }
+}
