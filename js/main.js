@@ -162,10 +162,10 @@ async function init() {
         _touchStartTime = Date.now();
     }, { passive: true });
     renderer.domElement.addEventListener('touchend', e => {
-        if (Date.now() - _touchStartTime > 300) return; // too slow — was a drag
+        if (Date.now() - _touchStartTime > 500) return; // too slow — was a drag
         const dx = e.changedTouches[0].clientX - _touchStartX;
         const dy = e.changedTouches[0].clientY - _touchStartY;
-        if (Math.hypot(dx, dy) > 12) return; // moved too far — was a pan
+        if (Math.hypot(dx, dy) > 22) return; // moved too far — was a pan
         onMouseClick({ clientX: e.changedTouches[0].clientX, clientY: e.changedTouches[0].clientY });
     }, { passive: true });
 

@@ -2,11 +2,11 @@
 // Provides a virtual joystick for steering and tap/hold buttons for ship actions.
 
 const JOYSTICK_RADIUS = 55;   // px — max knob travel
-const LOOK_SCALE      = 0.45; // joystick-px per frame → look-delta scaling
+const LOOK_SCALE      = 0.40; // joystick-px → look-delta scale (tuned down slightly)
 
 // Mirror constants from spaceship.js (must stay in sync)
-const MOBILE_MAX_SPEED    = 6.0;
-const MOBILE_MIN_SPEED    = 1.0;
+const MOBILE_MAX_SPEED     = 6.0;
+const MOBILE_MIN_SPEED     = 1.0;
 const MOBILE_BURN_DURATION = 1.0;
 
 export function initMobileControls(shipController) {
@@ -27,7 +27,10 @@ export function initMobileControls(shipController) {
             <div class="mob-btn" id="mobExit">EXIT FLY</div>
         </div>
         <div id="mobRightBtns">
-            <div class="mob-btn mob-hold" id="mobThrust">THRUST</div>
+            <div class="mob-row">
+                <div class="mob-btn mob-tap" id="mobSpeedUp">＋</div>
+                <div class="mob-btn mob-tap" id="mobSpeedDown">－</div>
+            </div>
             <div class="mob-row">
                 <div class="mob-btn mob-hold" id="mobBoost">BOOST</div>
                 <div class="mob-btn mob-hold" id="mobBrake">BRAKE</div>
@@ -74,23 +77,20 @@ export function initMobileControls(shipController) {
     joyZone.addEventListener('touchend',    resetJoy, { passive: false });
     joyZone.addEventListener('touchcancel', resetJoy, { passive: false });
 
-    // ── THRUST: directly drives _targetSpeed (W/S are keydown-only, not polled) ──
-    const thrustEl = root.querySelector('#mobThrust');
-    const setThrust = pressed => {
-        if (pressed) {
-            if (shipController.active && !shipController._orbitMode)
-                shipController._targetSpeed = MOBILE_MAX_SPEED;
-            shipController.keys['KeyW'] = true;
-        } else {
-            if (shipController.active)
-                shipController._targetSpeed = MOBILE_MIN_SPEED;
-            shipController.keys['KeyW'] = false;
-        }
-        thrustEl.classList.toggle('held', pressed);
-    };
-    thrustEl.addEventListener('touchstart',  e => { e.preventDefault(); setThrust(true);  }, { passive: false });
-    thrustEl.addEventListener('touchend',    e => { e.preventDefault(); setThrust(false); }, { passive: false });
-    thrustEl.addEventListener('touchcancel', e => { e.preventDefault(); setThrust(false); }, { passive: false });
+    // ── Speed +/− tap buttons (mirror W / S keydown behavior) ────────────
+    function tapBtn(id, action) {
+        const el = root.querySelector(`#${id}`);
+        el.addEventListener('touchstart', e => { e.preventDefault(); action(); el.classList.add('held'); },    { passive: false });
+        el.addEventListener('touchend',   e => { e.preventDefault(); el.classList.remove('held'); }, { passive: false });
+    }
+    tapBtn('mobSpeedUp', () => {
+        if (shipController.active && !shipController._orbitMode)
+            shipController._targetSpeed = MOBILE_MAX_SPEED;
+    });
+    tapBtn('mobSpeedDown', () => {
+        if (shipController.active && !shipController._orbitMode)
+            shipController._targetSpeed = MOBILE_MIN_SPEED;
+    });
 
     // ── BOOST: triggers burn timer directly (Space is keydown-only, not polled) ──
     const boostEl = root.querySelector('#mobBoost');
@@ -106,28 +106,25 @@ export function initMobileControls(shipController) {
     boostEl.addEventListener('touchcancel', e => { e.preventDefault(); triggerBoost(false); }, { passive: false });
 
     // ── BRAKE: polling-based in update loop, keys[] works fine ───────────
-    function holdBtn(id, code) {
-        const el = root.querySelector(`#${id}`);
-        const toggle = v => { shipController.keys[code] = v; el.classList.toggle('held', v); };
-        el.addEventListener('touchstart',  e => { e.preventDefault(); toggle(true);  }, { passive: false });
-        el.addEventListener('touchend',    e => { e.preventDefault(); toggle(false); }, { passive: false });
-        el.addEventListener('touchcancel', e => { e.preventDefault(); toggle(false); }, { passive: false });
-    }
-    holdBtn('mobBrake', 'ShiftLeft');
+    const brakeEl = root.querySelector('#mobBrake');
+    const setBrake = v => { shipController.keys['ShiftLeft'] = v; brakeEl.classList.toggle('held', v); };
+    brakeEl.addEventListener('touchstart',  e => { e.preventDefault(); setBrake(true);  }, { passive: false });
+    brakeEl.addEventListener('touchend',    e => { e.preventDefault(); setBrake(false); }, { passive: false });
+    brakeEl.addEventListener('touchcancel', e => { e.preventDefault(); setBrake(false); }, { passive: false });
 
-    // ── Tap buttons ──────────────────────────────────────────────────────
-    function tapBtn(id, action) {
+    // ── Action tap buttons ────────────────────────────────────────────────
+    function actionTap(id, action) {
         root.querySelector(`#${id}`).addEventListener('touchstart', e => {
             e.preventDefault(); action();
         }, { passive: false });
     }
-    tapBtn('mobWarp', () => {
+    actionTap('mobWarp', () => {
         if (shipController.active && shipController._warpTarget) shipController._doWarp();
     });
-    tapBtn('mobBreakOrbit', () => {
+    actionTap('mobBreakOrbit', () => {
         if (shipController.active && shipController._orbitMode) shipController._breakOrbit();
     });
-    tapBtn('mobExit', () => {
+    actionTap('mobExit', () => {
         if (!shipController.active) return;
         shipController.exit();
         document.getElementById('flyBtn')?.classList.remove('active');
@@ -136,10 +133,12 @@ export function initMobileControls(shipController) {
 
     // ── Per-frame tick ────────────────────────────────────────────────────
     function tick() {
-        if (shipController.active && (joyDx !== 0 || joyDy !== 0)) {
+        if (shipController.active) {
+            // Always push look delta — sending 0,0 when centered resets _mouseNDC
+            // so the ship flies straight when joystick is released
             shipController.addLookDelta(joyDx * LOOK_SCALE, joyDy * LOOK_SCALE);
         }
-        // While orbiting, hide thrust/boost/brake — they do nothing until orbit breaks
+        // While orbiting, hide speed/boost/brake — they do nothing until orbit breaks
         root.classList.toggle('orbit-mode', !!(shipController.active && shipController._orbitMode));
     }
 
