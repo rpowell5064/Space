@@ -787,12 +787,14 @@ canvas {
     margin-top: 8px;
   }
 
-  /* ── Focus panel: compact chip, won't cover the planet ── */
+  /* ── Focus panel: top-right on mobile so it never conflicts with fly buttons ── */
   #focusPanel {
-    width: auto;
-    max-width: 230px;
-    bottom: 12px;
+    top: 58px;
+    bottom: auto;
     right: 12px;
+    left: auto;
+    width: auto;
+    max-width: 210px;
     padding: 10px 12px 8px;
     border-radius: 6px;
   }
@@ -803,6 +805,12 @@ canvas {
   .stat-value  { font-size: 0.74rem; }
   /* Hide description on mobile — too much text, covers planet */
   .focus-desc  { display: none; }
+
+  /* ── Keyboard hint hidden on touch devices ── */
+  #hudHint { display: none; }
+
+  /* ── Orbit mode: hide thrust/boost/brake (not usable while orbiting) ── */
+  #mobileControls.orbit-mode #mobRightBtns { display: none; }
 
   /* ── Planet labels — smaller on mobile ── */
   .planet-label {
