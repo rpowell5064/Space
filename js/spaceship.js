@@ -768,7 +768,7 @@ export class ShipController {
         this._angVelYaw   += (desiredYaw   - this._angVelYaw)   * ANGULAR_RESPONSE * dt;
         this._angVelPitch += (desiredPitch - this._angVelPitch) * ANGULAR_RESPONSE * dt;
 
-        q.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this._angVelYaw   * dt))
+        q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this._angVelYaw   * dt))
          .multiply(new THREE.Quaternion().setFromAxisAngle(right,                          this._angVelPitch * dt))
          .normalize();
 
@@ -784,7 +784,7 @@ export class ShipController {
         const arrowYaw   = (k['ArrowLeft']  ? 1 : 0) - (k['ArrowRight'] ? 1 : 0);
         const arrowPitch = (k['ArrowUp']    ? 1 : 0) - (k['ArrowDown']  ? 1 : 0);
         if (arrowYaw !== 0 || arrowPitch !== 0) {
-            q.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), arrowYaw * ARROW_RATE))
+            q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), arrowYaw * ARROW_RATE))
              .multiply(new THREE.Quaternion().setFromAxisAngle(right, arrowPitch * ARROW_RATE))
              .normalize();
         }
