@@ -152,6 +152,22 @@ async function init() {
     window.addEventListener('resize', onWindowResize);
     renderer.domElement.addEventListener('click', onMouseClick);
 
+    // Touch tap-to-focus: OrbitControls swallows touch events so 'click'
+    // never fires on mobile. Track tap manually and call onMouseClick.
+    let _touchStartX = 0, _touchStartY = 0, _touchStartTime = 0;
+    renderer.domElement.addEventListener('touchstart', e => {
+        _touchStartX = e.touches[0].clientX;
+        _touchStartY = e.touches[0].clientY;
+        _touchStartTime = Date.now();
+    }, { passive: true });
+    renderer.domElement.addEventListener('touchend', e => {
+        if (Date.now() - _touchStartTime > 300) return; // too slow — was a drag
+        const dx = e.changedTouches[0].clientX - _touchStartX;
+        const dy = e.changedTouches[0].clientY - _touchStartY;
+        if (Math.hypot(dx, dy) > 12) return; // moved too far — was a pan
+        onMouseClick({ clientX: e.changedTouches[0].clientX, clientY: e.changedTouches[0].clientY });
+    }, { passive: true });
+
     animate();
 }
 

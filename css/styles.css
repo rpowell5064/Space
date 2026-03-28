@@ -15,9 +15,33 @@ canvas {
   height: 100%;
 }
 
-/* ── Menu toggle button (mobile only) ──────────────────────────────────── */
+/* ── Menu toggle button: visible on mobile, hidden on desktop ───────────── */
 #menuToggle {
-  display: none; /* hidden on desktop */
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 400;
+  width: 40px;
+  height: 40px;
+  background: rgba(0, 0, 20, 0.85);
+  border: 1px solid rgba(80, 150, 255, 0.40);
+  border-radius: 8px;
+  color: #88ccff;
+  font-size: 1.15rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+#menuToggle.open {
+  background: rgba(20, 60, 140, 0.92);
+  border-color: rgba(80, 180, 255, 0.75);
+}
+/* Hide on desktop */
+@media (min-width: 901px) {
+  #menuToggle { display: none; }
 }
 
 /* ── Close button inside panel (mobile only) ────────────────────────────── */
@@ -711,31 +735,6 @@ canvas {
 /* ── Mobile (phones/small tablets, any orientation) ────────────────────── */
 @media (max-width: 900px) {
 
-  /* ── Menu toggle button ── */
-  #menuToggle {
-    display: block;
-    position: fixed;
-    top: 12px;
-    left: 12px;
-    z-index: 300;
-    width: 38px;
-    height: 38px;
-    background: rgba(0, 0, 20, 0.82);
-    border: 1px solid rgba(80, 150, 255, 0.35);
-    border-radius: 8px;
-    color: #88ccff;
-    font-size: 1.1rem;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    -webkit-tap-highlight-color: transparent;
-  }
-  #menuToggle.open {
-    background: rgba(20, 60, 140, 0.90);
-    border-color: rgba(80, 180, 255, 0.70);
-  }
-
   /* ── Settings panel: hidden until toggled ── */
   #uiContainer {
     display: none;
@@ -804,6 +803,13 @@ canvas {
   .stat-value  { font-size: 0.74rem; }
   /* Hide description on mobile — too much text, covers planet */
   .focus-desc  { display: none; }
+
+  /* ── Planet labels — smaller on mobile ── */
+  .planet-label {
+    font-size: 8px;
+    letter-spacing: 1px;
+    padding: 2px 6px;
+  }
 
   /* ── Mobile fly controls — tighter ── */
   #mobJoyZone  { width: 88px; height: 88px; bottom: 24px; left: 16px; }
