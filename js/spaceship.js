@@ -9,7 +9,8 @@ const SHIP_SCALE = 0.012;
 // Flight physics — scaled for real AU distances (1 AU = 100 scene units)
 const THRUST        = 25.0;   // units/s² smooth engine acceleration
 const MIN_SPEED     = 0.5;    // units/s — idle drift so ship never fully stalls
-const MAX_SPEED     = 25.0;   // units/s — physical speed cap (HUD normalises to 0–100%)
+const CRUISE_MAX    = 13.0;   // units/s — W/S ceiling; Space boost breaks through this
+const MAX_SPEED     = 25.0;   // units/s — boost ceiling (HUD normalises to 0–100%)
 const LAT_DRAG      = 2.5;    // lateral grip — tracks nose without jerking at speed
 const BRAKE_FORCE   = 35.0;   // hard braking — full stop from max in ~3 s
 const STRAFE_FORCE  = 1.8;
@@ -875,11 +876,11 @@ export class ShipController {
         this._angVelYaw   += (desiredYaw   - this._angVelYaw)   * dynResponse * dt;
         this._angVelPitch += (desiredPitch - this._angVelPitch) * dynResponse * dt;
 
-        // Local-space up for yaw — stays consistent regardless of heading direction.
-        // World-space Y reverses when ship faces +Z (e.g. certain orbit-break angles).
-        // Roll accumulation (which used to cause local-up to flip) is prevented by auto-level below.
+        // Local-space axes for yaw and pitch — heading-invariant.
+        // Using world-space right for pitch inverts when ship faces +Z (right → -X after π yaw).
+        // Pure local (1,0,0) for pitch and local up for yaw stay consistent at every heading.
         q.multiply(new THREE.Quaternion().setFromAxisAngle(up, this._angVelYaw * dt))
-         .multiply(new THREE.Quaternion().setFromAxisAngle(right, this._angVelPitch * dt))
+         .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), this._angVelPitch * dt))
          .normalize();
 
         // Q/E roll — speed-scaled like yaw/pitch
@@ -906,13 +907,13 @@ export class ShipController {
         const arrowPitch = (k['ArrowUp']    ? 1 : 0) - (k['ArrowDown']  ? 1 : 0);
         if (arrowYaw !== 0 || arrowPitch !== 0) {
             q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), arrowYaw * ARROW_RATE))
-             .multiply(new THREE.Quaternion().setFromAxisAngle(right, arrowPitch * ARROW_RATE))
+             .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), arrowPitch * ARROW_RATE))
              .normalize();
         }
 
         // W/S smoothly ramp throttle; W/S contact clears full-throttle latch
-        if (k['KeyW']) { this._targetSpeed = Math.min(this._targetSpeed + 8 * dt, MAX_SPEED); this._fullThrottle = false; }
-        if (k['KeyS']) { this._targetSpeed = Math.max(this._targetSpeed - 8 * dt, 0);         this._fullThrottle = false; }
+        if (k['KeyW']) { this._targetSpeed = Math.min(this._targetSpeed + 8 * dt, CRUISE_MAX); this._fullThrottle = false; }
+        if (k['KeyS']) { this._targetSpeed = Math.max(this._targetSpeed - 8 * dt, 0);          this._fullThrottle = false; }
         if (braking)   { this._targetSpeed = MIN_SPEED; this._fullThrottle = false; }
 
         // Engine applies smooth constant force toward target speed — no multiplier jumps
