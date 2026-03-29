@@ -7,26 +7,18 @@ import * as THREE from 'https://esm.sh/three@0.160.0';
 const SHIP_SCALE = 0.012;
 
 // Flight physics — scaled for real AU distances (1 AU = 100 scene units)
-const THRUST        = 15.0;   // units/s² engine force
-const THROTTLE_RATE = 4.0;    // units/s² rate W/S adjusts target speed
-const BOOST_MULT    = 8.0;
-const MIN_SPEED     = 1.0;    // units/s — ship always moves at least this fast
-const MAX_SPEED     = 6.0;    // units/s normal ceiling (W key)
-const BOOST_MAX     = 100.0;  // units/s burn ceiling
-const BURN_DURATION = 1.0;    // seconds a burn lasts
-const BURN_COOLDOWN = 5.0;    // seconds before burn is available again
-const POST_BURN_DECEL = 32.0; // units/s² deceleration rate back to cruise after burn
-const CRUISE_PEAK_SPD = BOOST_MAX * 50 / 150;
-const BOOST_PEAK_SPD  = BOOST_MAX * 80 / 150;
+const THRUST        = 25.0;   // units/s² smooth engine acceleration
+const MIN_SPEED     = 0.5;    // units/s — idle drift so ship never fully stalls
+const MAX_SPEED     = 25.0;   // units/s — physical speed cap (HUD normalises to 0–100%)
 const LAT_DRAG      = 2.5;    // lateral grip — tracks nose without jerking at speed
-const BRAKE_FORCE   = 8.0;
+const BRAKE_FORCE   = 35.0;   // hard braking — full stop from max in ~3 s
 const STRAFE_FORCE  = 1.8;
 
 // Steering — angular velocity model for X-Wing-style inertial feel
-const TURN_RATE_MAX    = 2.0;  // rad/s max angular velocity (~115 deg/sec)
-const ANGULAR_RESPONSE = 3.5;  // how quickly angular vel ramps toward desired (lower = more lag)
+const TURN_RATE_MAX    = 1.6;  // rad/s max angular velocity
+const ANGULAR_RESPONSE = 2.0;  // lower = heavier/more inertial steering feel
 const ANGULAR_DAMP     = 6.0;  // how quickly spin bleeds off when aim is centered
-const AD_YAW_RATE      = 1.2;  // extra yaw from A/D keys (rad/s)
+const AD_YAW_RATE      = 0.9;  // extra yaw from A/D keys (rad/s)
 const ROLL_RATE        = 0.025;
 const ARROW_RATE       = 0.016;
 
@@ -35,10 +27,10 @@ const PITCH_SIGN = -1;
 const YAW_SIGN   = -1;
 
 // Camera
-const CAM_OFFSET     = new THREE.Vector3(0, 0.22, 0.50);
-const CAM_LERP       = 0.18;
-const BOOST_CAM_LERP = 0.18;  // same rate — speed is handled by scaling the offset
-const LOOK_LERP      = 0.22;
+const CAM_OFFSET     = new THREE.Vector3(0, 0.22, 0.38);
+const CAM_SMOOTH     = 28;   // exponential smoothing rate for camera position
+const LOOK_SMOOTH    = 20;   // exponential smoothing rate for look-at target
+const CAM_MAX_LAG    = 0.16; // hard clamp: camera never drifts further than this from target
 
 // Orbit
 const ORBIT_TRIGGER_MULT = 4.0;   // × planet radius → triggers orbit insertion
@@ -65,9 +57,10 @@ export class ShipController {
         this._angVelYaw    = 0;
         this._angVelPitch  = 0;
         this._angVelRoll   = 0;
-        // Burn timer: counts down from BURN_DURATION after Space is pressed
-        this._burnTimer    = 0;
-        this._burnCooldown = 0;  // counts down before burn is available again
+        // Fades mouse influence from 0→1 over 0.5s after orbit exit / fly entry
+        // Prevents the ship from snapping to wherever the cursor happens to be
+        this._mouseBlendIn = 0;
+        this._fullThrottle = false; // Space key latches full throttle until W/S touched
 
         // Bodies (planets + sun) for orbit detection; planets for crosshair lock-on
         this._bodies       = [];
@@ -139,24 +132,29 @@ export class ShipController {
 
     // ── Ship mesh ─────────────────────────────────────────────────────────
     _buildHull() {
-        const hullMat = new THREE.MeshStandardMaterial({
-            color: 0x3a6080, metalness: 0.60, roughness: 0.30,
-            emissive: 0x0d2035, emissiveIntensity: 0.6
+        const hull = new THREE.MeshStandardMaterial({
+            color: 0x2a4060, metalness: 0.82, roughness: 0.20,
+            emissive: 0x0d1e2c, emissiveIntensity: 1.2
         });
-        const accentMat = new THREE.MeshStandardMaterial({
-            color: 0x1f5fcc, metalness: 0.92, roughness: 0.12,
-            emissive: 0x0a2655, emissiveIntensity: 1.1
+        const panel = new THREE.MeshStandardMaterial({
+            color: 0x3a5270, metalness: 0.70, roughness: 0.30,
+            emissive: 0x122030, emissiveIntensity: 0.8
         });
-        const glassMat = new THREE.MeshStandardMaterial({
-            color: 0x66bbff, transparent: true, opacity: 0.48,
-            roughness: 0.0, metalness: 0.05
+        const accent = new THREE.MeshStandardMaterial({
+            color: 0x00bbff, metalness: 0.98, roughness: 0.05,
+            emissive: 0x0055ee, emissiveIntensity: 2.5
         });
-        const glowMat = new THREE.MeshStandardMaterial({
-            color: 0x99ddff, emissive: 0x3366ff,
-            emissiveIntensity: 3.5, transparent: true, opacity: 0.90
+        const glass = new THREE.MeshStandardMaterial({
+            color: 0x77ddff, transparent: true, opacity: 0.48,
+            roughness: 0.0, metalness: 0.08,
+            emissive: 0x1a3355, emissiveIntensity: 1.2
+        });
+        const nozzle = new THREE.MeshStandardMaterial({
+            color: 0xaaeeff, emissive: 0x2266ff,
+            emissiveIntensity: 6.0, transparent: true, opacity: 0.93
         });
 
-        const add = (geo, mat, px = 0, py = 0, pz = 0, rx = 0, ry = 0, rz = 0) => {
+        const add = (geo, mat, px=0, py=0, pz=0, rx=0, ry=0, rz=0) => {
             const m = new THREE.Mesh(geo, mat);
             m.position.set(px, py, pz);
             m.rotation.set(rx, ry, rz);
@@ -164,78 +162,151 @@ export class ShipController {
             return m;
         };
 
-        add(new THREE.ConeGeometry(0.50, 2.6, 8),          hullMat, 0, 0, -3.8, -Math.PI/2, 0, 0);
-        add(new THREE.CylinderGeometry(0.50, 0.64, 3.2, 10), hullMat, 0, 0, -1.8,  Math.PI/2, 0, 0);
-        add(new THREE.CylinderGeometry(0.64, 0.76, 2.4, 10), hullMat, 0, 0,  0.6,  Math.PI/2, 0, 0);
+        // ── Fuselage ──────────────────────────────────────────────────────
+        add(new THREE.ConeGeometry(0.16, 1.8, 8),            hull, 0, 0, -5.2, -Math.PI/2, 0, 0);
+        add(new THREE.CylinderGeometry(0.16, 0.42, 1.6, 10), hull, 0, 0, -3.8,  Math.PI/2, 0, 0);
+        add(new THREE.CylinderGeometry(0.42, 0.55, 2.6, 12), hull, 0, 0, -2.1,  Math.PI/2, 0, 0);
+        add(new THREE.CylinderGeometry(0.55, 0.58, 1.4, 12), hull, 0, 0.05, -0.2, Math.PI/2, 0, 0);
+        add(new THREE.CylinderGeometry(0.58, 0.65, 2.0, 12), hull, 0, 0,  1.2,  Math.PI/2, 0, 0);
+        add(new THREE.CylinderGeometry(0.65, 0.60, 1.0, 12), hull, 0, 0,  2.7,  Math.PI/2, 0, 0);
 
+        // ── Dorsal spine ──
+        add(new THREE.BoxGeometry(0.12, 0.22, 3.6), panel, 0, 0.70, -1.6);
+        add(new THREE.BoxGeometry(0.08, 0.14, 1.8), panel, 0, 0.76,  1.0);
+        add(new THREE.ConeGeometry(0.08, 0.6, 6),   panel, 0, 0.80, -3.6, -Math.PI/2, 0, 0);
+
+        // ── Cockpit ──
+        add(new THREE.SphereGeometry(0.35, 20, 14, 0, Math.PI*2, 0, Math.PI*0.55), glass,  0, 0.76, -2.6);
+        add(new THREE.TorusGeometry(0.36, 0.028, 8, 28), accent, 0, 0.76, -2.6, Math.PI/2, 0, 0);
+        add(new THREE.BoxGeometry(0.018, 0.018, 0.70), accent, 0, 1.07, -2.6);
+        add(new THREE.BoxGeometry(0.70,  0.018, 0.018), accent, 0, 1.07, -2.6);
+
+        // ── Delta wings ──
         [-1, 1].forEach(side => {
-            const shape = new THREE.Shape();
-            shape.moveTo(0,          -2.6);
-            shape.lineTo(side * 3.8, -0.3);
-            shape.lineTo(side * 4.7,  2.8);
-            shape.lineTo(0,           2.8);
-            shape.closePath();
-            const w = new THREE.Mesh(
-                new THREE.ExtrudeGeometry(shape, { depth: 0.10, bevelEnabled: true, bevelSize: 0.06, bevelThickness: 0.05, bevelSegments: 1 }),
-                hullMat
+            const ws = new THREE.Shape();
+            ws.moveTo(0,          -2.8);
+            ws.lineTo(side * 1.2, -1.5);
+            ws.lineTo(side * 4.2,  1.0);
+            ws.lineTo(side * 4.8,  1.8);
+            ws.lineTo(side * 5.0,  2.4);
+            ws.lineTo(side * 4.8,  2.8);
+            ws.lineTo(side * 4.0,  2.8);
+            ws.lineTo(side * 3.8,  2.4);
+            ws.lineTo(side * 0.5,  2.8);
+            ws.lineTo(0,           2.8);
+            ws.closePath();
+            const wm = new THREE.Mesh(
+                new THREE.ExtrudeGeometry(ws, { depth: 0.08, bevelEnabled: true, bevelSize: 0.04, bevelThickness: 0.03, bevelSegments: 1 }),
+                hull
             );
-            w.rotation.x = Math.PI / 2;
-            w.position.set(0, -0.14, 0);
-            this.shipGroup.add(w);
+            wm.rotation.x = Math.PI / 2;
+            wm.position.set(0, -0.06, 0);
+            this.shipGroup.add(wm);
+
+            // Leading-edge accent stripe
+            const ls = new THREE.Shape();
+            ls.moveTo(side * 0.05, -2.79);
+            ls.lineTo(side * 0.24, -2.79);
+            ls.lineTo(side * 4.34,  1.00);
+            ls.lineTo(side * 4.15,  1.00);
+            ls.closePath();
+            const lm = new THREE.Mesh(
+                new THREE.ExtrudeGeometry(ls, { depth: 0.09, bevelEnabled: false }),
+                accent
+            );
+            lm.rotation.x = Math.PI / 2;
+            lm.position.set(0, -0.02, 0);
+            this.shipGroup.add(lm);
+
+            // Under-wing sensor pod
+            add(new THREE.CylinderGeometry(0.09, 0.11, 1.5, 8), panel,  side*2.2, -0.24, 0.8, Math.PI/2, 0, 0);
+            add(new THREE.ConeGeometry(0.09, 0.44, 8),           panel,  side*2.2, -0.24, -0.07, -Math.PI/2, 0, 0);
+            add(new THREE.TorusGeometry(0.10, 0.022, 6, 16),     accent, side*2.2, -0.24, 0.38, Math.PI/2, 0, 0);
+
+            // Wingtip nav light — red port, green starboard
+            add(new THREE.SphereGeometry(0.065, 8, 6),
+                new THREE.MeshStandardMaterial({
+                    color:    side < 0 ? 0xff2200 : 0x00ff44,
+                    emissive: side < 0 ? 0xcc0000 : 0x00cc22,
+                    emissiveIntensity: 4.5, transparent: true, opacity: 0.95
+                }),
+                side * 5.0, -0.06, 2.5);
         });
 
-        add(new THREE.SphereGeometry(0.45, 18, 12, 0, Math.PI*2, 0, Math.PI*0.52), glassMat,  0, 0.62, -1.8);
-        add(new THREE.TorusGeometry(0.45, 0.05, 6, 24),                            accentMat, 0, 0.62, -1.8, Math.PI/2, 0, 0);
-        add(new THREE.BoxGeometry(0.05, 0.03, 5.2), accentMat,  0.00,  0.67, -1.5);
-        add(new THREE.BoxGeometry(0.03, 0.05, 4.2), accentMat, -0.62,  0.00, -1.6);
-        add(new THREE.BoxGeometry(0.03, 0.05, 4.2), accentMat,  0.62,  0.00, -1.6);
+        // ── Dorsal fin ──
+        const fin = new THREE.Shape();
+        fin.moveTo(0, 0); fin.lineTo(0, 1.5); fin.lineTo(-0.28, 1.44);
+        fin.lineTo(-1.9, 0.28); fin.lineTo(-1.9, 0); fin.closePath();
+        const finMesh = new THREE.Mesh(
+            new THREE.ExtrudeGeometry(fin, { depth: 0.038, bevelEnabled: false }), hull
+        );
+        finMesh.rotation.y = -Math.PI / 2;
+        finMesh.position.set(0.019, 0.82, 1.6);
+        this.shipGroup.add(finMesh);
+        add(new THREE.BoxGeometry(0.013, 1.18, 0.032), accent, 0, 1.38, 1.75);
 
-        const finShape = new THREE.Shape();
-        finShape.moveTo(0, 0); finShape.lineTo(0, 1.15); finShape.lineTo(-1.9, 0); finShape.closePath();
-        const fin = new THREE.Mesh(new THREE.ExtrudeGeometry(finShape, { depth: 0.05, bevelEnabled: false }), hullMat);
-        fin.rotation.y = -Math.PI / 2;
-        fin.position.set(0.025, 0.66, 2.6);
-        this.shipGroup.add(fin);
-
-        [[-0.88, -0.22], [0.88, -0.22]].forEach(([ex, ey]) => {
-            add(new THREE.CylinderGeometry(0.22, 0.28, 2.4, 10), hullMat,   ex, ey, 1.5, Math.PI/2, 0, 0);
-            add(new THREE.TorusGeometry(0.24, 0.05, 6, 18),      accentMat, ex, ey, 0.3, Math.PI/2, 0, 0);
-            add(new THREE.TorusGeometry(0.21, 0.04, 6, 18),      accentMat, ex, ey, 2.7, Math.PI/2, 0, 0);
-            this._engineGlows.push(add(new THREE.CircleGeometry(0.18, 16), glowMat, ex, ey, 2.72));
+        // ── Engine nacelles ──
+        [[-1.10, -0.20], [1.10, -0.20]].forEach(([ex, ey]) => {
+            add(new THREE.ConeGeometry(0.18, 0.65, 12),           hull,   ex, ey, -0.72, -Math.PI/2, 0, 0);
+            add(new THREE.CylinderGeometry(0.18, 0.24, 3.0, 14),  hull,   ex, ey,  1.0,   Math.PI/2, 0, 0);
+            add(new THREE.CylinderGeometry(0.24, 0.21, 0.35, 14), hull,   ex, ey,  2.68,  Math.PI/2, 0, 0);
+            add(new THREE.TorusGeometry(0.19, 0.028, 8, 22), accent, ex, ey, -0.40, Math.PI/2, 0, 0);
+            add(new THREE.TorusGeometry(0.25, 0.035, 8, 22), accent, ex, ey,  0.55, Math.PI/2, 0, 0);
+            add(new THREE.TorusGeometry(0.25, 0.032, 8, 22), accent, ex, ey,  2.22, Math.PI/2, 0, 0);
+            add(new THREE.TorusGeometry(0.22, 0.026, 8, 22), accent, ex, ey,  2.58, Math.PI/2, 0, 0);
+            // Intake inner glow (BackSide — visible from the front of nacelle)
+            add(new THREE.CircleGeometry(0.13, 16),
+                new THREE.MeshStandardMaterial({ color: 0x3366ff, emissive: 0x1133cc, emissiveIntensity: 2.5, transparent: true, opacity: 0.65, side: THREE.BackSide }),
+                ex, ey, -1.04);
+            // Nozzle outer glow disk
+            this._engineGlows.push(add(new THREE.CircleGeometry(0.21, 22), nozzle, ex, ey, 2.88));
+            // Nozzle inner core
             this._engineGlows.push(add(
-                new THREE.CircleGeometry(0.09, 16),
-                new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xaaddff, emissiveIntensity: 5.0, transparent: true, opacity: 0.95 }),
-                ex, ey, 2.73
+                new THREE.CircleGeometry(0.10, 22),
+                new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x99ddff, emissiveIntensity: 9.0, transparent: true, opacity: 0.98 }),
+                ex, ey, 2.89
             ));
         });
 
-        // Primary fill — blue-white, illuminates top/front
-        const fill = new THREE.PointLight(0xaaccff, 5.0, 40);
-        fill.position.set(0, 2, -2);
-        this.shipGroup.add(fill);
-        // Secondary fill — warm white from below, prevents pure-black underside
-        const fill2 = new THREE.PointLight(0xffeedd, 2.5, 30);
-        fill2.position.set(0, -2, 1);
-        this.shipGroup.add(fill2);
+        // ── Nose light ──
+        add(new THREE.SphereGeometry(0.048, 8, 6),
+            new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xaaccff, emissiveIntensity: 5.0, transparent: true, opacity: 0.95 }),
+            0, 0, -6.1);
+
+        // ── Ventral keel ──
+        add(new THREE.BoxGeometry(0.26, 0.06, 2.6), panel,  0, -0.58, -0.8);
+        add(new THREE.BoxGeometry(0.07, 0.04, 1.4), accent, 0, -0.61, -0.8);
+
+        // ── Scene lights ──
+        const fill1 = new THREE.PointLight(0x88bbff, 14.0, 80);
+        fill1.position.set(0, 3, -3); this.shipGroup.add(fill1);
+        const fill2 = new THREE.PointLight(0xffeedd, 6.0, 60);
+        fill2.position.set(0, -2.5, 1.5); this.shipGroup.add(fill2);
+        // Engine point light — intensity driven by thrust in update()
+        this._engineLight = new THREE.PointLight(0x44aaff, 4.0, 28);
+        this._engineLight.position.set(0, 0, 4.2);
+        this.shipGroup.add(this._engineLight);
     }
 
     // ── Engine particles ───────────────────────────────────────────────────
     _buildEngineParticles() {
-        const tex = this._makeGlowSprite();
+        const coreSprite  = this._makeGlowSprite(true);   // tight bright core
+        const plumeSprite = this._makeGlowSprite(false);  // soft diffuse halo
 
-        this._core  = this._makeLayer(400, 0.030, tex);
-        this._cLife = new Float32Array(400);
-        this._cVel  = new Float32Array(400 * 3);
+        this._core  = this._makeLayer(1400, 0.034, coreSprite);
+        this._cLife = new Float32Array(1400);
+        this._cVel  = new Float32Array(1400 * 3);
         this._cHead = 0;
 
-        this._plume  = this._makeLayer(300, 0.065, tex);
-        this._pLife  = new Float32Array(300);
-        this._pVel   = new Float32Array(300 * 3);
+        this._plume  = this._makeLayer(1200, 0.120, plumeSprite);
+        this._pLife  = new Float32Array(1200);
+        this._pVel   = new Float32Array(1200 * 3);
         this._pHead  = 0;
 
+        // Match updated nacelle nozzle positions
         this._exits = [
-            new THREE.Vector3(-0.88, -0.22, 2.72),
-            new THREE.Vector3( 0.88, -0.22, 2.72),
+            new THREE.Vector3(-1.10, -0.20, 2.88),
+            new THREE.Vector3( 1.10, -0.20, 2.88),
         ];
     }
 
@@ -262,19 +333,28 @@ export class ShipController {
         return { posAttr, colAttr, pos, col };
     }
 
-    _makeGlowSprite() {
+    _makeGlowSprite(sharp = true) {
         const c = document.createElement('canvas');
         c.width = c.height = 128;
         const ctx = c.getContext('2d');
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, 128, 128);
+        ctx.clearRect(0, 0, 128, 128);
         const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-        g.addColorStop(0.00, 'rgba(255,255,255,1.00)');
-        g.addColorStop(0.08, 'rgba(220,240,255,0.95)');
-        g.addColorStop(0.20, 'rgba(140,195,255,0.78)');
-        g.addColorStop(0.42, 'rgba(60,120,255,0.40)');
-        g.addColorStop(0.68, 'rgba(25,60,200,0.12)');
-        g.addColorStop(1.00, 'rgba(5, 20,160,0.00)');
+        if (sharp) {
+            // Hot inner core: bright white centre → cyan → deep blue
+            g.addColorStop(0.00, 'rgba(255,255,255,1.00)');
+            g.addColorStop(0.10, 'rgba(240,255,255,0.98)');
+            g.addColorStop(0.28, 'rgba(160,220,255,0.82)');
+            g.addColorStop(0.55, 'rgba(60,140,255,0.36)');
+            g.addColorStop(0.80, 'rgba(20,70,210,0.08)');
+            g.addColorStop(1.00, 'rgba(5, 30,170,0.00)');
+        } else {
+            // Soft outer plume: wide cyan–blue diffuse halo
+            g.addColorStop(0.00, 'rgba(180,230,255,0.80)');
+            g.addColorStop(0.22, 'rgba(100,185,255,0.48)');
+            g.addColorStop(0.50, 'rgba(40,110,255,0.22)');
+            g.addColorStop(0.75, 'rgba(15, 55,210,0.07)');
+            g.addColorStop(1.00, 'rgba(0,  20,160,0.00)');
+        }
         ctx.fillStyle = g;
         ctx.fillRect(0, 0, 128, 128);
         return new THREE.CanvasTexture(c);
@@ -288,16 +368,18 @@ export class ShipController {
             <div id="hudMode">✦ FLIGHT MODE ✦</div>
             <div id="hudWarpHint"></div>
             <div id="hudOrbitStatus"></div>
-            <div id="hudSpeedRow">
-                <span id="hudSpdLabel">SPD</span>
-                <span id="hudSpdVal">000</span>
+            <div id="hudBottomBar">
+                <div id="hudSpeedRow">
+                    <span id="hudSpdLabel">SPD</span>
+                    <span id="hudSpdVal">000</span>
+                </div>
+                <div id="hudBurnRow"></div>
             </div>
-            <div id="hudBurnRow"></div>
             <div id="hudCrosshair"></div>
             <div id="hudTargetDist"></div>
             <div id="hudHint">
                 AIM&nbsp;crosshair&nbsp;→&nbsp;lock &nbsp;·&nbsp; G&nbsp;warp &nbsp;·&nbsp; X&nbsp;break&nbsp;orbit
-                &nbsp;·&nbsp; W&nbsp;thrust &nbsp;·&nbsp; SPACE&nbsp;5s&nbsp;burn &nbsp;·&nbsp; SHIFT&nbsp;brake &nbsp;·&nbsp; F&nbsp;exit
+                &nbsp;·&nbsp; W/S&nbsp;throttle &nbsp;·&nbsp; SPACE&nbsp;full&nbsp;throttle &nbsp;·&nbsp; SHIFT&nbsp;brake &nbsp;·&nbsp; F&nbsp;exit
             </div>
         `;
         this._hud.style.display = 'none';
@@ -383,7 +465,7 @@ export class ShipController {
             if (e.code === 'KeyF') { e.preventDefault(); this.active ? this.exit() : this.enter(); }
             if (e.code === 'KeyG' && this.active && this._warpTarget) { e.preventDefault(); this._doWarp(); }
             if (e.code === 'KeyX' && this.active && this._orbitMode) { e.preventDefault(); this._breakOrbit(); }
-            if (e.code === 'Space' && this.active && !this._orbitMode && this._burnTimer <= 0 && this._burnCooldown <= 0) { e.preventDefault(); this._burnTimer = BURN_DURATION; }
+            if (e.code === 'Space' && this.active && !this._orbitMode) { e.preventDefault(); this._targetSpeed = MAX_SPEED; this._fullThrottle = true; }
             // W/S step speed by 5 on each press
             // W/S handled continuously in update() — no keydown action needed
             if (this.active && PREVENT_CODES.includes(e.code)) e.preventDefault();
@@ -451,6 +533,7 @@ export class ShipController {
         this._orbitSpeed  = 0.0013;  // → 2π/(0.0013×60) ≈ 80 second orbit
         this._vel.set(0, 0, 0);
         this._targetSpeed = 0;
+        this._mouseBlendIn = 0;  // re-fade mouse on any orbit entry (warp arrival, proximity)
 
         // Snap _camLookAt so the camera doesn't drift toward the sun on entry
         const bodyPos0 = body.getPosition();
@@ -503,8 +586,12 @@ export class ShipController {
         this._targetSpeed = 0;
         this._orbitCooldown = 3.0;
 
-        // Reset virtual cursor and angular velocity so ship flies straight after orbit break
+        // Reset angular velocity so ship flies straight after orbit break.
+        // _mouseNDC.set(0,0) has no durable effect since the next mousemove event
+        // snaps it back to wherever the cursor physically is; _mouseBlendIn fades
+        // that influence in over 0.5s so the ship doesn't immediately snap to cursor.
         this._mouseNDC.set(0, 0);
+        this._mouseBlendIn = 0;
         this._angVelYaw   = 0;
         this._angVelPitch = 0;
         this._angVelRoll  = 0;
@@ -570,9 +657,8 @@ export class ShipController {
         this.active = true;
         this.orbitControls.enabled = false;
         this._vel.set(0, 0, 0);
-        this._targetSpeed  = 0;          // start at rest; hold W/+ to build speed
-        this._burnTimer    = 0;
-        this._burnCooldown = 0;
+        this._targetSpeed  = 0;
+        this._fullThrottle = false;
         this._orbitCooldown = 2.0;      // prevent instant orbit on entry if near a planet
         this._mouseNDC.set(0, 0);
         this._angVelYaw   = 0;
@@ -585,7 +671,14 @@ export class ShipController {
         const dir = new THREE.Vector3();
         this.camera.getWorldDirection(dir);
         this.shipGroup.position.copy(this.camera.position).addScaledVector(dir, 20);
-        this.shipGroup.quaternion.copy(this.camera.quaternion);
+        // Inherit only the camera's yaw — level the ship so pitch/roll from OrbitControls
+        // doesn't cause world-space yaw to feel wrong from the first input
+        const flatDir = dir.clone(); flatDir.y = 0;
+        if (flatDir.lengthSq() < 0.0001) flatDir.set(0, 0, -1);
+        flatDir.normalize();
+        const entryYaw = Math.atan2(-flatDir.x, -flatDir.z);
+        this.shipGroup.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), entryYaw);
+        this._mouseBlendIn = 0;
         this.shipGroup.visible = true;
 
         const q = this.shipGroup.quaternion;
@@ -741,11 +834,6 @@ export class ShipController {
         if (this._orbitMode) return; // just entered orbit this frame
 
         // ── Normal flight ─────────────────────────────────────────────────
-        const wasBurning = this._burnTimer > 0;
-        if (this._burnTimer   > 0) this._burnTimer   = Math.max(this._burnTimer   - dt, 0);
-        if (this._burnCooldown > 0) this._burnCooldown = Math.max(this._burnCooldown - dt, 0);
-        if (wasBurning && this._burnTimer <= 0) this._burnCooldown = BURN_COOLDOWN;
-        const burning  = this._burnTimer > 0;
         const braking  = !!(k['ShiftLeft'] || k['ShiftRight']);
         const q        = this.shipGroup.quaternion;
 
@@ -762,26 +850,55 @@ export class ShipController {
         //   cursor up             → pitch up at proportional rate
         // Angular velocity ramps toward desired (inertia) then coasts back to 0.
 
-        // Steering is gated: ship must be moving, burning, or under W thrust before
-        // cursor input has any effect. Prevents out-of-control spinning at entry.
-        const steerActive = (burning || curSpd > 0.3) && this._cursorInWindow;
+        // Fade mouse influence in from 0→1 over ~0.5s after orbit exit / fly entry.
+        // Prevents the ship from immediately steering toward wherever the cursor
+        // happens to be sitting when orbit breaks or fly mode starts.
+        if (this._mouseBlendIn < 1) this._mouseBlendIn = Math.min(1, this._mouseBlendIn + dt * 2.0);
+        const mouseX = this._mouseNDC.x * this._mouseBlendIn;
+        const mouseY = this._mouseNDC.y * this._mouseBlendIn;
+
+        // Steering is gated: ship must be moving before cursor has any effect.
+        const steerActive = curSpd > 0.3 && this._cursorInWindow;
         const adInput     = (k['KeyA'] ? 1 : 0) - (k['KeyD'] ? 1 : 0);
-        const desiredYaw   = steerActive ? YAW_SIGN   * this._mouseNDC.x * TURN_RATE_MAX + adInput * AD_YAW_RATE : 0;
-        const desiredPitch = steerActive ? PITCH_SIGN * this._mouseNDC.y * TURN_RATE_MAX : 0;
 
-        this._angVelYaw   += (desiredYaw   - this._angVelYaw)   * ANGULAR_RESPONSE * dt;
-        this._angVelPitch += (desiredPitch - this._angVelPitch) * ANGULAR_RESPONSE * dt;
+        // Speed-scaled steering — ship gets progressively heavier above ~20 u/s.
+        // At max speed turn rate drops to 28% and A/D yaw to 35%, keeping the ship
+        // controllable without becoming a wild projectile at full throttle.
+        const sFrac       = Math.min(curSpd / MAX_SPEED, 1.0);
+        const dynTurn     = TURN_RATE_MAX  * (1.0 - sFrac * 0.72);   // 1.6 → 0.45 rad/s
+        const dynAdYaw    = AD_YAW_RATE    * (1.0 - sFrac * 0.65);   // 0.9 → 0.32 rad/s
+        const dynResponse = ANGULAR_RESPONSE * (1.0 - sFrac * 0.45); // 2.0 → 1.1
 
-        q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this._angVelYaw   * dt))
-         .multiply(new THREE.Quaternion().setFromAxisAngle(right,                          this._angVelPitch * dt))
+        const desiredYaw   = steerActive ? YAW_SIGN   * mouseX * dynTurn + adInput * dynAdYaw : 0;
+        const desiredPitch = steerActive ? PITCH_SIGN * mouseY * dynTurn : 0;
+
+        this._angVelYaw   += (desiredYaw   - this._angVelYaw)   * dynResponse * dt;
+        this._angVelPitch += (desiredPitch - this._angVelPitch) * dynResponse * dt;
+
+        // Local-space up for yaw — stays consistent regardless of heading direction.
+        // World-space Y reverses when ship faces +Z (e.g. certain orbit-break angles).
+        // Roll accumulation (which used to cause local-up to flip) is prevented by auto-level below.
+        q.multiply(new THREE.Quaternion().setFromAxisAngle(up, this._angVelYaw * dt))
+         .multiply(new THREE.Quaternion().setFromAxisAngle(right, this._angVelPitch * dt))
          .normalize();
 
-        // Q/E roll — same inertia model as yaw/pitch
+        // Q/E roll — speed-scaled like yaw/pitch
         const rollInput    = (k['KeyE'] ? 1 : 0) - (k['KeyQ'] ? 1 : 0);
-        const desiredRoll  = rollInput * TURN_RATE_MAX * 0.6; // roll slightly slower than yaw
-        this._angVelRoll  += (desiredRoll - this._angVelRoll) * ANGULAR_RESPONSE * dt;
+        const desiredRoll  = rollInput * dynTurn * 0.6;
+        this._angVelRoll  += (desiredRoll - this._angVelRoll) * dynResponse * dt;
         if (Math.abs(this._angVelRoll) > 0.0001) {
             q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), this._angVelRoll * dt)).normalize();
+        }
+
+        // Auto-level roll — spring back to 0 roll when Q/E not held.
+        // Keeps local up close to world up, which is required for local-space yaw
+        // to feel consistent (if roll reaches 90° local up → world horizontal → yaw becomes roll).
+        if (!k['KeyQ'] && !k['KeyE']) {
+            const euler = new THREE.Euler().setFromQuaternion(q, 'YXZ');
+            if (Math.abs(euler.z) > 0.003) {
+                const rollBack = -euler.z * Math.min(5.0 * dt, 0.18);
+                q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), rollBack)).normalize();
+            }
         }
 
         // Arrow steering
@@ -793,22 +910,17 @@ export class ShipController {
              .normalize();
         }
 
-        // W/S ramp target speed continuously while held
-        if (k['KeyW'] && !this._orbitMode) this._targetSpeed = Math.min(this._targetSpeed + 40 * dt, BOOST_MAX);
-        if (k['KeyS'] && !this._orbitMode) this._targetSpeed = Math.max(this._targetSpeed - 40 * dt, 0);
+        // W/S smoothly ramp throttle; W/S contact clears full-throttle latch
+        if (k['KeyW']) { this._targetSpeed = Math.min(this._targetSpeed + 8 * dt, MAX_SPEED); this._fullThrottle = false; }
+        if (k['KeyS']) { this._targetSpeed = Math.max(this._targetSpeed - 8 * dt, 0);         this._fullThrottle = false; }
+        if (braking)   { this._targetSpeed = MIN_SPEED; this._fullThrottle = false; }
 
-        // Engine force — engine maintains _targetSpeed automatically.
-        // Braking overrides to zero; burn overshoots then decelerates back to _targetSpeed.
+        // Engine applies smooth constant force toward target speed — no multiplier jumps
         const fwdVel          = this._vel.dot(forward);
-        const postBurnDecel   = !burning && !braking && fwdVel > this._targetSpeed + 0.5;
-        const effectiveTarget = burning  ? BOOST_MAX
-                              : braking  ? 0
-                              : Math.max(this._targetSpeed, MIN_SPEED);
-        const forceMult       = (burning || postBurnDecel || braking) ? BOOST_MULT : 1;
-
-        const fwdErr = effectiveTarget - fwdVel;
+        const effectiveTarget = braking ? 0 : Math.max(this._targetSpeed, MIN_SPEED);
+        const fwdErr          = effectiveTarget - fwdVel;
         if (Math.abs(fwdErr) > 0.001) {
-            const maxCorr = THRUST * forceMult * dt;
+            const maxCorr = (braking ? BRAKE_FORCE : THRUST) * dt;
             this._vel.addScaledVector(forward, Math.sign(fwdErr) * Math.min(Math.abs(fwdErr), maxCorr));
         }
 
@@ -833,62 +945,71 @@ export class ShipController {
         // Move
         this.shipGroup.position.addScaledVector(this._vel, dt);
 
-        // Engine glow — curSpd already computed above
-        const cruiseVis = Math.min(curSpd / CRUISE_PEAK_SPD, 1.0);
-        const boostVis  = Math.max(0, Math.min(
-            (curSpd - CRUISE_PEAK_SPD) / (BOOST_PEAK_SPD - CRUISE_PEAK_SPD), 1.0));
-        const thrForDisplay = burning
-            ? 1.0 + boostVis * 0.5
-            : k['KeyW'] ? Math.max(cruiseVis, 0.5) : cruiseVis * 0.4;
+        // Engine glow — driven by throttle fraction
+        const throttleFrac  = Math.min(curSpd / MAX_SPEED, 1.0);
+        const thrForDisplay = Math.min(throttleFrac + (k['KeyW'] || this._fullThrottle ? 0.12 : 0), 1.0);
         this._engineGlows.forEach((g, idx) => {
-            const base = idx % 2 === 0 ? 1.5 + thrForDisplay * 4.0 : 3.0 + thrForDisplay * 7.0;
-            g.material.emissiveIntensity = base + Math.random() * 0.6;
+            const base = idx % 2 === 0 ? 2.0 + thrForDisplay * 6.0 : 4.0 + thrForDisplay * 10.0;
+            g.material.emissiveIntensity = base + Math.random() * 1.2;
         });
+        if (this._engineLight) {
+            this._engineLight.intensity = 2.0 + thrForDisplay * 22.0 + Math.random() * 3.0;
+        }
 
-        // Particles — exhaust direction blends nose-backward with velocity-backward
-        // so the trail aligns with actual travel direction, not just where the nose points.
-        const isThrusting = curSpd > 0.01 || k['KeyW'];
-        const spawnN = isThrusting ? Math.round(10 + boostVis * 10) : 4;
+        // Particles — exhaust direction blends nose with velocity for realistic trail angle
+        const spawnN = Math.round(14 + throttleFrac * 18); // 14–32 per engine
         const exhaustDir = curSpd > 0.5
             ? forward.clone().lerp(this._vel.clone().normalize(), Math.min(curSpd / 60.0, 0.18)).normalize()
             : forward;
-        this._spawnParticles(spawnN, exhaustDir, boostVis, cruiseVis);
+        this._spawnParticles(spawnN, exhaustDir, throttleFrac, throttleFrac);
         this._tickParticles();
 
-        // Camera follow
-        // Pull camera back proportionally to speed so fast travel feels cinematic
-        const speedFrac = Math.min(curSpd / BOOST_MAX, 1.0);
-        const boostZ    = CAM_OFFSET.z * (1.0 + speedFrac * 0.8);
-        const camLocal  = new THREE.Vector3(CAM_OFFSET.x, CAM_OFFSET.y, boostZ).applyQuaternion(q);
-        this.camera.position.lerp(this.shipGroup.position.clone().add(camLocal), CAM_LERP);
-        const lookTarget = this.shipGroup.position.clone().addScaledVector(forward, 10);
-        this._camLookAt.lerp(lookTarget, LOOK_LERP);
+        // Camera follow — dt-based exponential smoothing + hard distance clamp.
+        // _mouseBlendIn doubles as a "settle" factor after orbit exit:
+        //   settle=0 → camera and look-at snap directly (no lag, no sway)
+        //   settle=1 → normal smooth follow
+        // This eliminates the post-orbit sway that lerp lag causes when
+        // transitioning from the orbital camera angle back to behind-ship.
+        const speedFrac  = Math.min(curSpd / MAX_SPEED, 1.0);
+        // Subtle pull-back at speed (max +12%) — ship stays large in frame
+        const dynZ      = CAM_OFFSET.z * (1 + speedFrac * 0.12);
+        const camTarget = this.shipGroup.position.clone().add(
+            new THREE.Vector3(CAM_OFFSET.x, CAM_OFFSET.y, dynZ).applyQuaternion(q));
+
+        const settle   = this._mouseBlendIn;
+        const baseCam  = 1 - Math.exp(-CAM_SMOOTH * dt);
+        const camAlpha = baseCam + (1 - baseCam) * (1 - settle);
+        this.camera.position.lerp(camTarget, camAlpha);
+
+        // Hard clamp — constant tight leash, does NOT grow at speed.
+        // Previous behaviour (lag growing to 0.72 at max) was letting the ship escape the frame.
+        const toTarget = camTarget.clone().sub(this.camera.position);
+        const lagDist  = toTarget.length();
+        if (lagDist > CAM_MAX_LAG) {
+            this.camera.position.addScaledVector(toTarget, 1 - CAM_MAX_LAG / lagDist);
+        }
+
+        // Look-ahead shortened from 10 → 4 units so a sharp turn at high speed
+        // doesn't sweep the look-target off-screen before LOOK_SMOOTH catches up.
+        const lookTarget = this.shipGroup.position.clone().addScaledVector(forward, 4);
+        const baseLook   = 1 - Math.exp(-LOOK_SMOOTH * dt);
+        const lookAlpha  = baseLook + (1 - baseLook) * (1 - settle);
+        this._camLookAt.lerp(lookTarget, lookAlpha);
         this.camera.lookAt(this._camLookAt);
 
-        // HUD speed
+        // HUD speed — normalised 0–100 percentage of max speed
         if (this._spdVal) {
-            const display = Math.min(Math.round(curSpd / BOOST_MAX * 500), 500);
-            this._spdVal.textContent = String(display).padStart(3, '0');
+            this._spdVal.textContent = String(Math.round(curSpd / MAX_SPEED * 100)).padStart(3, '0');
         }
-        // HUD burn timer
+        // HUD throttle bar
         if (this._burnRowEl) {
-            if (burning) {
-                const pct = (this._burnTimer / BURN_DURATION) * 100;
-                this._burnRowEl.innerHTML =
-                    `<span style="color:#ff9922;letter-spacing:2px">BURN</span>` +
-                    `<span style="display:inline-block;width:60px;height:6px;` +
-                    `background:linear-gradient(to right,#ff6600 ${pct.toFixed(0)}%,#331100 ${pct.toFixed(0)}%);` +
-                    `margin-left:6px;border-radius:3px;vertical-align:middle"></span>`;
-            } else if (this._burnCooldown > 0) {
-                const pct = ((BURN_COOLDOWN - this._burnCooldown) / BURN_COOLDOWN) * 100;
-                this._burnRowEl.innerHTML =
-                    `<span style="color:#556677;letter-spacing:2px">RECHARGE</span>` +
-                    `<span style="display:inline-block;width:60px;height:6px;` +
-                    `background:linear-gradient(to right,#225588 ${pct.toFixed(0)}%,#112233 ${pct.toFixed(0)}%);` +
-                    `margin-left:6px;border-radius:3px;vertical-align:middle"></span>`;
-            } else {
-                this._burnRowEl.innerHTML = `<span style="color:#33aa66;letter-spacing:2px">BOOST READY</span>`;
-            }
+            const pct  = (this._targetSpeed / MAX_SPEED * 100).toFixed(0);
+            const col  = throttleFrac > 0.75 ? '#ff9922' : throttleFrac > 0.35 ? '#44ccff' : '#336688';
+            this._burnRowEl.innerHTML =
+                `<span style="color:${col};letter-spacing:2px">THR</span>` +
+                `<span style="display:inline-block;width:70px;height:5px;` +
+                `background:linear-gradient(to right,${col} ${pct}%,#0a1520 ${pct}%);` +
+                `margin-left:6px;border-radius:3px;vertical-align:middle"></span>`;
         }
 
         // HUD target distance — only shown while a warp target is locked
@@ -908,72 +1029,88 @@ export class ShipController {
     _spawnParticles(countPerEngine, forward, boostIntensity, thrust) {
         const q   = this.shipGroup.quaternion;
         const pos = this.shipGroup.position;
-        const i   = Math.min(Math.max(thrust, 0), 1);
-        const idle = i < 0.15;
-        const c    = i * 0.35 + boostIntensity * 0.20;
+        const t   = Math.min(Math.max(thrust, 0), 1);
 
-        if (idle) {
+        // Perpendicular basis computed once per call — no per-particle allocation
+        const rt = new THREE.Vector3(forward.y, -forward.x, 0);
+        if (rt.lengthSq() < 0.01) rt.set(0, forward.z, -forward.y);
+        rt.normalize();
+        const up = new THREE.Vector3().crossVectors(forward, rt);
+
+        // Idle shimmer — faint blue pulse at nozzle mouths
+        if (t < 0.12) {
             for (let eng = 0; eng < 2; eng++) {
-                const worldExit = this._exits[eng].clone()
-                    .multiplyScalar(SHIP_SCALE).applyQuaternion(q).add(pos);
+                const we = this._exits[eng].clone().multiplyScalar(SHIP_SCALE).applyQuaternion(q).add(pos);
                 for (let n = 0; n < 4; n++) {
-                    const idx = this._cHead % 400; this._cHead++;
-                    this._core.pos.set([worldExit.x, worldExit.y, worldExit.z], idx*3);
-                    const sp = 0.0008;
-                    this._cVel[idx*3]   = -forward.x*0.00055 + (Math.random()-.5)*sp;
-                    this._cVel[idx*3+1] = -forward.y*0.00055 + (Math.random()-.5)*sp;
-                    this._cVel[idx*3+2] = -forward.z*0.00055 + (Math.random()-.5)*sp;
-                    this._cLife[idx] = 0.35;
-                    const f = 0.03;
-                    this._core.col[idx*3] = f*0.4; this._core.col[idx*3+1] = f*0.6; this._core.col[idx*3+2] = f;
+                    const idx = this._cHead % 1400; this._cHead++;
+                    const sp  = 0.0007;
+                    this._core.pos[idx*3]   = we.x; this._core.pos[idx*3+1] = we.y; this._core.pos[idx*3+2] = we.z;
+                    this._cVel[idx*3]   = -forward.x*0.0005+(Math.random()-.5)*sp;
+                    this._cVel[idx*3+1] = -forward.y*0.0005+(Math.random()-.5)*sp;
+                    this._cVel[idx*3+2] = -forward.z*0.0005+(Math.random()-.5)*sp;
+                    this._cLife[idx] = 0.30;
+                    this._core.col[idx*3]=0.012; this._core.col[idx*3+1]=0.030; this._core.col[idx*3+2]=0.055;
                 }
             }
             return;
         }
 
-        const scaledCount = Math.max(2, Math.floor(countPerEngine * (0.05 + c * 0.5)));
+        // Spawn counts — core is tighter/brighter, plume is wide and long-lived
+        const coreN  = Math.max(6,  Math.floor(countPerEngine * (0.55 + t * 0.45)));
+        const plumeN = Math.max(3,  Math.floor(countPerEngine * (0.25 + t * 0.45)));
+
         for (let eng = 0; eng < 2; eng++) {
-            const worldExit = this._exits[eng].clone()
-                .multiplyScalar(SHIP_SCALE).applyQuaternion(q).add(pos);
-            for (let n = 0; n < scaledCount; n++) {
-                // Core
-                {
-                    const idx = this._cHead % 400; this._cHead++;
-                    const spd = (0.0012 + Math.random()*0.0008) * (0.2 + c*0.8);
-                    const sp  = 0.0009*(0.2+c*0.8);
-                    this._core.pos[idx*3]   = worldExit.x;
-                    this._core.pos[idx*3+1] = worldExit.y;
-                    this._core.pos[idx*3+2] = worldExit.z;
-                    this._cVel[idx*3]   = -forward.x*spd+(Math.random()-.5)*sp;
-                    this._cVel[idx*3+1] = -forward.y*spd+(Math.random()-.5)*sp;
-                    this._cVel[idx*3+2] = -forward.z*spd+(Math.random()-.5)*sp;
-                    this._cLife[idx] = 0.3+c*0.5;
-                    const hot=0.6+boostIntensity*0.4, cs=0.03+c*0.40;
-                    this._core.col[idx*3]=hot*cs; this._core.col[idx*3+1]=0.65*cs; this._core.col[idx*3+2]=cs;
-                }
-                if (n%2===0) {
-                    const idx = this._pHead % 300; this._pHead++;
-                    const spd = (0.0006+Math.random()*0.0008)*(0.2+c*0.8);
-                    const sp  = 0.004*(0.1+c*0.5);
-                    this._plume.pos[idx*3]   = worldExit.x;
-                    this._plume.pos[idx*3+1] = worldExit.y;
-                    this._plume.pos[idx*3+2] = worldExit.z;
-                    this._pVel[idx*3]   = -forward.x*spd+(Math.random()-.5)*sp;
-                    this._pVel[idx*3+1] = -forward.y*spd+(Math.random()-.5)*sp;
-                    this._pVel[idx*3+2] = -forward.z*spd+(Math.random()-.5)*sp;
-                    this._pLife[idx] = 0.3+c*0.5;
-                    const base=0.08+boostIntensity*0.14, cs=0.02+c*0.35;
-                    this._plume.col[idx*3]=base*cs; this._plume.col[idx*3+1]=0.55*cs; this._plume.col[idx*3+2]=cs;
-                }
+            const we = this._exits[eng].clone().multiplyScalar(SHIP_SCALE).applyQuaternion(q).add(pos);
+
+            // ── Core: tight bright hot beam ────────────────────────────────
+            // Particles are pre-seeded backward along the trail so the stream
+            // looks dense at the moment of spawn (no "building up" delay).
+            for (let n = 0; n < coreN; n++) {
+                const idx  = this._cHead % 1400; this._cHead++;
+                const spd  = (0.006 + Math.random()*0.005) * (0.25 + t*0.75);
+                const cone = (0.04 + boostIntensity*0.05) * Math.random();
+                const th   = Math.random() * Math.PI * 2;
+                const sr   = cone * spd;
+                const back = Math.random() * 0.32 * (0.4 + t * 0.6);
+                this._core.pos[idx*3]   = we.x - forward.x * back;
+                this._core.pos[idx*3+1] = we.y - forward.y * back;
+                this._core.pos[idx*3+2] = we.z - forward.z * back;
+                this._cVel[idx*3]   = -forward.x*spd + (rt.x*Math.cos(th)+up.x*Math.sin(th))*sr;
+                this._cVel[idx*3+1] = -forward.y*spd + (rt.y*Math.cos(th)+up.y*Math.sin(th))*sr;
+                this._cVel[idx*3+2] = -forward.z*spd + (rt.z*Math.cos(th)+up.z*Math.sin(th))*sr;
+                this._cLife[idx] = 0.50 + t*0.50;
+                // White-hot at birth; colour evolves in _tickParticles
+                const cs = 0.08 + t*0.60;
+                this._core.col[idx*3] = cs; this._core.col[idx*3+1] = cs*0.92; this._core.col[idx*3+2] = cs;
+            }
+
+            // ── Plume: wide cinematic bloom ────────────────────────────────
+            for (let n = 0; n < plumeN; n++) {
+                const idx  = this._pHead % 1200; this._pHead++;
+                const spd  = (0.0022 + Math.random()*0.0028) * (0.15 + t*0.85);
+                const cone = (0.14 + boostIntensity*0.14) * Math.random();
+                const th   = Math.random() * Math.PI * 2;
+                const sr   = cone * spd;
+                const back = Math.random() * 0.45 * (0.3 + t * 0.7);
+                this._plume.pos[idx*3]   = we.x - forward.x * back;
+                this._plume.pos[idx*3+1] = we.y - forward.y * back;
+                this._plume.pos[idx*3+2] = we.z - forward.z * back;
+                this._pVel[idx*3]   = -forward.x*spd + (rt.x*Math.cos(th)+up.x*Math.sin(th))*sr;
+                this._pVel[idx*3+1] = -forward.y*spd + (rt.y*Math.cos(th)+up.y*Math.sin(th))*sr;
+                this._pVel[idx*3+2] = -forward.z*spd + (rt.z*Math.cos(th)+up.z*Math.sin(th))*sr;
+                this._pLife[idx] = 0.65 + t*0.35;
+                const cs = 0.025 + t*0.30;
+                this._plume.col[idx*3]=cs*0.12; this._plume.col[idx*3+1]=cs*0.72; this._plume.col[idx*3+2]=cs;
             }
         }
     }
 
     // ── Advance particle lifetimes ─────────────────────────────────────────
     _tickParticles() {
-        for (let i = 0; i < 400; i++) {
+        // Core — white-hot at birth → electric cyan → deep blue-violet
+        for (let i = 0; i < 1400; i++) {
             if (this._cLife[i] <= 0) continue;
-            this._cLife[i] -= 0.050;
+            this._cLife[i] -= 0.020;
             if (this._cLife[i] <= 0) {
                 this._cLife[i] = 0;
                 this._core.pos[i*3] = this._core.pos[i*3+1] = this._core.pos[i*3+2] = 1e6;
@@ -983,16 +1120,20 @@ export class ShipController {
             this._core.pos[i*3]   += this._cVel[i*3];
             this._core.pos[i*3+1] += this._cVel[i*3+1];
             this._core.pos[i*3+2] += this._cVel[i*3+2];
-            this._core.col[i*3]   = t > 0.55 ? t : t*0.25;
-            this._core.col[i*3+1] = t > 0.65 ? t*0.94 : t*0.68;
-            this._core.col[i*3+2] = t;
+            // t: 1.0=fresh → 0.0=dead
+            // >0.7 white-hot, 0.4–0.7 cyan, <0.4 blue-violet
+            const bright = Math.min(t * 1.4, 1.0);
+            this._core.col[i*3]   = t > 0.70 ? bright * 0.95 : t > 0.40 ? bright * 0.15 : bright * 0.08;
+            this._core.col[i*3+1] = t > 0.70 ? bright * 0.96 : t > 0.40 ? bright * 0.85 : bright * 0.40;
+            this._core.col[i*3+2] = bright;   // blue channel persists longest
         }
         this._core.posAttr.needsUpdate = true;
         this._core.colAttr.needsUpdate = true;
 
-        for (let i = 0; i < 300; i++) {
+        // Plume — wide soft cyan halo fades to deep blue-indigo
+        for (let i = 0; i < 1200; i++) {
             if (this._pLife[i] <= 0) continue;
-            this._pLife[i] -= 0.022;
+            this._pLife[i] -= 0.010;
             if (this._pLife[i] <= 0) {
                 this._pLife[i] = 0;
                 this._plume.pos[i*3] = this._plume.pos[i*3+1] = this._plume.pos[i*3+2] = 1e6;
@@ -1002,9 +1143,10 @@ export class ShipController {
             this._plume.pos[i*3]   += this._pVel[i*3];
             this._plume.pos[i*3+1] += this._pVel[i*3+1];
             this._plume.pos[i*3+2] += this._pVel[i*3+2];
-            this._plume.col[i*3]   = t*0.10;
-            this._plume.col[i*3+1] = t*0.58;
-            this._plume.col[i*3+2] = t*0.92;
+            // Cyan near nozzle, fading to indigo at tail
+            this._plume.col[i*3]   = t * 0.05;
+            this._plume.col[i*3+1] = t > 0.5 ? t * 0.60 : t * 0.30;
+            this._plume.col[i*3+2] = t * 0.92;
         }
         this._plume.posAttr.needsUpdate = true;
         this._plume.colAttr.needsUpdate = true;
