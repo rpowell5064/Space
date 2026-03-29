@@ -9,8 +9,10 @@ const SHIP_SCALE = 0.012;
 // Flight physics — scaled for real AU distances (1 AU = 100 scene units)
 const THRUST        = 25.0;   // units/s² smooth engine acceleration
 const MIN_SPEED     = 0.5;    // units/s — idle drift so ship never fully stalls
-const CRUISE_MAX    = 13.0;   // units/s — W/S ceiling; Space boost breaks through this
-const MAX_SPEED     = 25.0;   // units/s — boost ceiling (HUD normalises to 0–100%)
+const CRUISE_MAX       = 13.0;  // units/s — W/S ceiling; Space boost breaks through this
+const MAX_SPEED        = 25.0;  // units/s — boost ceiling (HUD normalises to 0–100%)
+const BOOST_DURATION   = 3.5;   // seconds of continuous boost before charge depletes
+const BOOST_RECHARGE   = 0.28;  // charge/second when not boosting (full in ~3.6 s)
 const LAT_DRAG      = 2.5;    // lateral grip — tracks nose without jerking at speed
 const BRAKE_FORCE   = 35.0;   // hard braking — full stop from max in ~3 s
 const STRAFE_FORCE  = 1.8;
@@ -61,7 +63,8 @@ export class ShipController {
         // Fades mouse influence from 0→1 over 0.5s after orbit exit / fly entry
         // Prevents the ship from snapping to wherever the cursor happens to be
         this._mouseBlendIn = 0;
-        this._fullThrottle = false; // Space key latches full throttle until W/S touched
+        this._fullThrottle = false; // Space key latches boost until charge runs out or W/S pressed
+        this._boostCharge  = 1.0;  // 0.0–1.0; drains while boosting, recharges otherwise
 
         // Bodies (planets + sun) for orbit detection; planets for crosshair lock-on
         this._bodies       = [];
@@ -660,6 +663,7 @@ export class ShipController {
         this._vel.set(0, 0, 0);
         this._targetSpeed  = 0;
         this._fullThrottle = false;
+        this._boostCharge  = 1.0;
         this._orbitCooldown = 2.0;      // prevent instant orbit on entry if near a planet
         this._mouseNDC.set(0, 0);
         this._angVelYaw   = 0;
@@ -911,10 +915,24 @@ export class ShipController {
              .normalize();
         }
 
-        // W/S smoothly ramp throttle; W/S contact clears full-throttle latch
+        // W/S smoothly ramp throttle; W/S contact clears boost latch
         if (k['KeyW']) { this._targetSpeed = Math.min(this._targetSpeed + 8 * dt, CRUISE_MAX); this._fullThrottle = false; }
         if (k['KeyS']) { this._targetSpeed = Math.max(this._targetSpeed - 8 * dt, 0);          this._fullThrottle = false; }
         if (braking)   { this._targetSpeed = MIN_SPEED; this._fullThrottle = false; }
+
+        // Boost — drains charge while active; auto-cuts when depleted; recharges when off
+        if (this._fullThrottle) {
+            if (this._boostCharge > 0) {
+                this._boostCharge = Math.max(0, this._boostCharge - dt / BOOST_DURATION);
+                this._targetSpeed = MAX_SPEED;
+            } else {
+                // Charge depleted — auto-disengage boost, coast back to cruise
+                this._fullThrottle = false;
+                this._targetSpeed  = Math.min(this._targetSpeed, CRUISE_MAX);
+            }
+        } else {
+            this._boostCharge = Math.min(1.0, this._boostCharge + dt * BOOST_RECHARGE);
+        }
 
         // Engine applies smooth constant force toward target speed — no multiplier jumps
         const fwdVel          = this._vel.dot(forward);
@@ -1002,14 +1020,17 @@ export class ShipController {
         if (this._spdVal) {
             this._spdVal.textContent = String(Math.round(curSpd / MAX_SPEED * 100)).padStart(3, '0');
         }
-        // HUD throttle bar
+        // HUD boost charge bar
         if (this._burnRowEl) {
-            const pct  = (this._targetSpeed / MAX_SPEED * 100).toFixed(0);
-            const col  = throttleFrac > 0.75 ? '#ff9922' : throttleFrac > 0.35 ? '#44ccff' : '#336688';
+            const chargePct = Math.round(this._boostCharge * 100);
+            const boosting  = this._fullThrottle && this._boostCharge > 0;
+            const depleted  = this._boostCharge < 0.05;
+            const col       = boosting ? '#ff9922' : depleted ? '#442200' : '#44ccff';
+            const label     = boosting ? 'BOOST' : depleted ? 'RCHG' : 'BOOST';
             this._burnRowEl.innerHTML =
-                `<span style="color:${col};letter-spacing:2px">THR</span>` +
+                `<span style="color:${col};letter-spacing:2px">${label}</span>` +
                 `<span style="display:inline-block;width:70px;height:5px;` +
-                `background:linear-gradient(to right,${col} ${pct}%,#0a1520 ${pct}%);` +
+                `background:linear-gradient(to right,${col} ${chargePct}%,#0a1520 ${chargePct}%);` +
                 `margin-left:6px;border-radius:3px;vertical-align:middle"></span>`;
         }
 
