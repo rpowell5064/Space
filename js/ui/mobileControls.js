@@ -5,10 +5,9 @@ const JOYSTICK_RADIUS = 55;   // px — max knob travel
 const LOOK_SCALE      = 0.40; // joystick-px → look-delta scale (tuned down slightly)
 
 // Mirror constants from spaceship.js (must stay in sync)
-const MOBILE_SPEED_STEP    = 20.0;
-const MOBILE_MIN_SPEED     = 1.0;
-const MOBILE_BOOST_MAX     = 100.0;
-const MOBILE_BURN_DURATION = 1.0;
+const MOBILE_SPEED_STEP = 20.0;
+const MOBILE_MIN_SPEED  = 1.0;
+const MOBILE_CRUISE_MAX = 13.0;  // matches CRUISE_MAX in spaceship.js
 
 export function initMobileControls(shipController) {
     const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -88,18 +87,17 @@ export function initMobileControls(shipController) {
     speedHold('mobSpeedUp',   v => speedUpHeld   = v);
     speedHold('mobSpeedDown', v => speedDownHeld = v);
 
-    // ── BOOST: triggers burn timer directly (Space is keydown-only, not polled) ──
+    // ── BOOST: engages _fullThrottle latch — mirrors Space keydown in spaceship.js.
+    //    Drain/auto-cut is handled by the spaceship.js update loop via _boostCharge.
     const boostEl = root.querySelector('#mobBoost');
-    const triggerBoost = pressed => {
-        if (pressed && shipController.active && !shipController._orbitMode &&
-            shipController._burnTimer <= 0 && shipController._burnCooldown <= 0) {
-            shipController._burnTimer = MOBILE_BURN_DURATION;
+    const triggerBoost = () => {
+        if (shipController.active && !shipController._orbitMode && shipController._boostCharge > 0) {
+            shipController._fullThrottle = true;
         }
-        boostEl.classList.toggle('held', pressed);
     };
-    boostEl.addEventListener('touchstart',  e => { e.preventDefault(); triggerBoost(true);  }, { passive: false });
-    boostEl.addEventListener('touchend',    e => { e.preventDefault(); triggerBoost(false); }, { passive: false });
-    boostEl.addEventListener('touchcancel', e => { e.preventDefault(); triggerBoost(false); }, { passive: false });
+    boostEl.addEventListener('touchstart', e => { e.preventDefault(); triggerBoost(); boostEl.classList.add('held'); },    { passive: false });
+    boostEl.addEventListener('touchend',   e => { e.preventDefault(); boostEl.classList.remove('held'); }, { passive: false });
+    boostEl.addEventListener('touchcancel',e => { e.preventDefault(); boostEl.classList.remove('held'); }, { passive: false });
 
     // ── BRAKE: polling-based in update loop, keys[] works fine ───────────
     const brakeEl = root.querySelector('#mobBrake');
@@ -132,8 +130,8 @@ export function initMobileControls(shipController) {
 
             // Ramp speed while +/− held — mirrors W/S rate in spaceship.js
             if (!shipController._orbitMode) {
-                if (speedUpHeld)   shipController._targetSpeed = Math.min(shipController._targetSpeed + 40 * dt, MOBILE_BOOST_MAX);
-                if (speedDownHeld) shipController._targetSpeed = Math.max(shipController._targetSpeed - 40 * dt, 0);
+                if (speedUpHeld)   { shipController._targetSpeed = Math.min(shipController._targetSpeed + 8 * dt, MOBILE_CRUISE_MAX); shipController._fullThrottle = false; }
+                if (speedDownHeld) { shipController._targetSpeed = Math.max(shipController._targetSpeed - 8 * dt, 0);                 shipController._fullThrottle = false; }
             }
         }
         // While orbiting, hide speed/boost/brake — they do nothing until orbit breaks
