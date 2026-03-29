@@ -151,10 +151,14 @@ async function init() {
 
     // ── Events ────────────────────────────────────────────────────────────
     window.addEventListener('resize', onWindowResize);
-    // orientationchange fires before the browser has settled on new dimensions;
-    // delay the resize call so innerWidth/Height reflect the rotated viewport.
-    window.addEventListener('orientationchange', () => setTimeout(onWindowResize, 200));
-    // visualViewport is more reliable than resize on modern mobile browsers
+    // orientationchange fires before the browser has settled on new dimensions.
+    // Two staggered timeouts: 350ms for most devices, 750ms fallback for slow iOS.
+    window.addEventListener('orientationchange', () => {
+        setTimeout(onWindowResize, 350);
+        setTimeout(onWindowResize, 750);
+    });
+    // visualViewport fires after the browser has committed to the new size —
+    // more reliable than resize/orientationchange on mobile.
     if (window.visualViewport) {
         window.visualViewport.addEventListener('resize', onWindowResize);
     }
@@ -213,11 +217,15 @@ function onSpeedChange(event) {
 
 // ── Resize handler ────────────────────────────────────────────────────────
 function onWindowResize() {
-    camera.aspect = window.innerWidth / window.innerHeight;
+    // visualViewport updates before window.innerWidth/Height on iOS Safari,
+    // so it gives the correct landscape dimensions immediately after rotation.
+    const w = window.visualViewport?.width  ?? window.innerWidth;
+    const h = window.visualViewport?.height ?? window.innerHeight;
+    camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    labelRenderer.setSize(window.innerWidth, window.innerHeight);
-    if (heatDistortion) heatDistortion.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(w, h);
+    labelRenderer.setSize(w, h);
+    if (heatDistortion) heatDistortion.setSize(w, h);
     if (mobileControls && !shipController?.active) mobileControls.hide();
 }
 
