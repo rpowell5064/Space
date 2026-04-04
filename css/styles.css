@@ -559,6 +559,21 @@ canvas {
   margin-top: 6px;
   pointer-events: auto;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.abort-touch { display: none; }
+
+/* On touch devices show TAP, hide ESC */
+@media (pointer: coarse) {
+  .abort-kbd   { display: none; }
+  .abort-touch { display: inline; }
+  #mhAbort {
+    font-size: 0.65rem;
+    padding: 10px 0 2px;
+    color: rgba(200, 140, 50, 0.85);
+  }
 }
 
 /* ── Flight-mode HUD ────────────────────────────────────────────────────── */
@@ -880,6 +895,8 @@ canvas {
     font-size: 0.80rem;
     border-radius: 10px;
     z-index: 250;
+    max-height: calc(100dvh - 80px);
+    overflow-y: auto;
   }
   #uiContainer.open {
     display: block;
@@ -932,7 +949,8 @@ canvas {
     padding: 10px 16px 8px;
   }
   #mhTitle    { font-size: 0.82rem; letter-spacing: 3px; }
-  #mhPhase    { font-size: 0.60rem; letter-spacing: 1.5px; }
+  #mhSub      { font-size: 0.55rem; letter-spacing: 1px; }
+  #mhPhase    { font-size: 0.54rem; letter-spacing: 0.8px; white-space: normal; line-height: 1.45; }
 
   /* ── Focus panel: top-right on mobile so it never conflicts with fly buttons ── */
   #focusPanel {

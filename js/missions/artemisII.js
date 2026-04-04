@@ -52,7 +52,7 @@ export class ArtemisMission {
             <div id="mhSub">Crewed Lunar Flyby Mission · April 1–10, 2026</div>
             <div id="mhPhase"></div>
             <div id="mhProgressWrap"><div id="mhProgressBar"></div></div>
-            <div id="mhAbort">[ESC] ABORT MISSION</div>
+            <div id="mhAbort"><span class="abort-kbd">[ESC]</span><span class="abort-touch">[TAP]</span> ABORT MISSION</div>
         `;
         this._hud.style.display = 'none';
         document.body.appendChild(this._hud);
@@ -65,6 +65,10 @@ export class ArtemisMission {
                 e.preventDefault();
                 this.stop();
             }
+        });
+
+        document.getElementById('mhAbort').addEventListener('click', () => {
+            if (this.active) this.stop();
         });
     }
 
