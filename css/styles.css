@@ -534,6 +534,7 @@ canvas {
   color: #ffdd88;
   text-transform: uppercase;
   min-height: 1.2em;
+  max-width: 100%;
 }
 
 #mhProgressWrap {
@@ -945,12 +946,18 @@ canvas {
   }
   #missionHUD {
     min-width: 0;
-    width: calc(100vw - 32px);
-    padding: 10px 16px 8px;
+    width: calc(100vw - 48px);
+    max-width: 400px;
+    top: auto;
+    bottom: 20px;
+    padding: 8px 14px 7px;
+    border-radius: 8px;
   }
-  #mhTitle    { font-size: 0.82rem; letter-spacing: 3px; }
-  #mhSub      { font-size: 0.55rem; letter-spacing: 1px; }
-  #mhPhase    { font-size: 0.54rem; letter-spacing: 0.8px; white-space: normal; line-height: 1.45; }
+  #mhTitle    { font-size: 0.72rem; letter-spacing: 3px; }
+  #mhSub      { display: none; }
+  #mhPhase    { font-size: 0.52rem; letter-spacing: 0.6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
+  #mhProgressWrap { margin: 5px 0 2px; }
+  #mhAbort    { font-size: 0.58rem; margin-top: 4px; padding: 6px 0 0; }
 
   /* ── Focus panel: top-right on mobile so it never conflicts with fly buttons ── */
   #focusPanel {
