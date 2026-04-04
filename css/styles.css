@@ -448,6 +448,119 @@ canvas {
   box-shadow: 0 0 18px rgba(50, 170, 255, 0.50);
 }
 
+/* ── Special Events section in control panel ────────────────────────────── */
+#specialEvents {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 160, 40, 0.18);
+}
+
+.special-events-label {
+  font-size: 0.60rem;
+  letter-spacing: 2.5px;
+  color: rgba(255, 170, 60, 0.55);
+  text-transform: uppercase;
+  margin-bottom: 7px;
+}
+
+#artemisBtn {
+  display: block;
+  width: 100%;
+  padding: 8px 0;
+  font-family: 'Segoe UI', monospace, sans-serif;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #cc8833;
+  background: rgba(40, 20, 0, 0.60);
+  border: 1px solid rgba(200, 130, 40, 0.35);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s;
+}
+#artemisBtn:hover {
+  background: rgba(70, 35, 0, 0.80);
+  border-color: rgba(220, 160, 60, 0.70);
+  color: #ffcc55;
+  box-shadow: 0 0 10px rgba(200, 130, 30, 0.25);
+}
+#artemisBtn.active {
+  background: rgba(100, 45, 0, 0.90);
+  border-color: rgba(255, 180, 50, 0.85);
+  color: #ffe080;
+  box-shadow: 0 0 16px rgba(220, 150, 30, 0.45);
+}
+
+/* ── Mission HUD overlay (Artemis II and future events) ─────────────────── */
+#missionHUD {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 510;
+  background: rgba(0, 5, 18, 0.88);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 160, 40, 0.40);
+  border-radius: 10px;
+  padding: 14px 28px 12px;
+  text-align: center;
+  font-family: 'Segoe UI', monospace, sans-serif;
+  color: #fff;
+  min-width: 340px;
+  pointer-events: none;
+}
+
+#mhTitle {
+  font-size: 1.0rem;
+  font-weight: 700;
+  letter-spacing: 5px;
+  color: #ffcc44;
+  text-shadow: 0 0 18px rgba(255, 200, 60, 0.55);
+  text-transform: uppercase;
+}
+
+#mhSub {
+  font-size: 0.60rem;
+  letter-spacing: 1.5px;
+  color: rgba(180, 120, 40, 0.70);
+  margin-top: 2px;
+  margin-bottom: 10px;
+}
+
+#mhPhase {
+  font-size: 0.68rem;
+  letter-spacing: 2px;
+  color: #ffdd88;
+  text-transform: uppercase;
+  min-height: 1.2em;
+}
+
+#mhProgressWrap {
+  height: 3px;
+  background: rgba(255, 160, 40, 0.15);
+  border-radius: 2px;
+  margin: 8px 0 4px;
+  overflow: hidden;
+}
+
+#mhProgressBar {
+  height: 100%;
+  background: linear-gradient(to right, #cc6600, #ffdd44);
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.15s linear;
+}
+
+#mhAbort {
+  font-size: 0.55rem;
+  letter-spacing: 2px;
+  color: rgba(140, 90, 30, 0.65);
+  margin-top: 6px;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
 /* ── Flight-mode HUD ────────────────────────────────────────────────────── */
 #shipHUD {
   position: fixed;
@@ -808,6 +921,18 @@ canvas {
     letter-spacing: 2px;
     margin-top: 8px;
   }
+  #artemisBtn {
+    font-size: 0.56rem;
+    padding: 7px 0;
+    letter-spacing: 1.5px;
+  }
+  #missionHUD {
+    min-width: 0;
+    width: calc(100vw - 32px);
+    padding: 10px 16px 8px;
+  }
+  #mhTitle    { font-size: 0.82rem; letter-spacing: 3px; }
+  #mhPhase    { font-size: 0.60rem; letter-spacing: 1.5px; }
 
   /* ── Focus panel: top-right on mobile so it never conflicts with fly buttons ── */
   #focusPanel {

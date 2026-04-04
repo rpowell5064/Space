@@ -12,6 +12,7 @@ import { FocusController } from './camera/focusController.js';
 import { initControls } from './ui/controlsPanel.js';
 import { showFocusPanel, hideFocusPanel } from './ui/infoPanel.js';
 import { ShipController } from './spaceship.js';
+import { ArtemisMission } from './missions/artemisII.js';
 import { createHeatDistortion } from './effects/heatDistortion.js';
 import { initMobileControls }  from './ui/mobileControls.js';
 
@@ -66,6 +67,7 @@ let sun = null;
 let orbitLines = [];
 let focusController = null;
 let shipController = null;
+let artemisMission = null;
 let heatDistortion = null;
 let mobileControls = null;
 let bodyMap = new Map(); // name → { getPosition, radius, name }
@@ -112,6 +114,18 @@ async function init() {
         };
         bodyMap.set(p.data.name, body);
     });
+    // Moon body — needed for Artemis mission and ship orbit detection
+    const earthMoonEntry = moons.find(m => m.moonDef.name === 'Moon');
+    if (earthMoonEntry) {
+        const moonMesh = earthMoonEntry.pivot.children[0];
+        const moonBody = {
+            name: 'Moon',
+            radius: earthMoonEntry.moonDef.size,
+            getPosition: () => { const v = new THREE.Vector3(); moonMesh.getWorldPosition(v); return v; }
+        };
+        bodyMap.set('Moon', moonBody);
+    }
+
     shipController.setBodies([sunBody, ...planets.map(p => bodyMap.get(p.data.name))]);
     shipController.setPlanets(planets);
 
@@ -142,6 +156,41 @@ async function init() {
         labelRenderer,
         orbitLines
     });
+
+    // ── Artemis II special event ──────────────────────────────────────────
+    artemisMission = new ArtemisMission(scene, camera, controls, shipController);
+    artemisMission.onStop = () => {
+        const btn = document.getElementById('artemisBtn');
+        if (btn) { btn.classList.remove('active'); btn.textContent = '⬤ ARTEMIS II MISSION'; }
+        const flyBtn = document.getElementById('flyBtn');
+        if (flyBtn) flyBtn.classList.remove('active');
+    };
+
+    const artemisBtn = document.getElementById('artemisBtn');
+    if (artemisBtn) {
+        artemisBtn.addEventListener('click', () => {
+            if (artemisMission.active) {
+                artemisMission.stop();
+            } else {
+                const earthBody = bodyMap.get('Earth');
+                const moonBody  = bodyMap.get('Moon');
+                if (!earthBody || !moonBody) return;
+
+                // Exit any active fly mode first (mission will re-enter it)
+                if (shipController.active) shipController.exit();
+
+                // Clear any active focus (mission owns the camera)
+                focusController.clear();
+
+                artemisMission.start(earthBody, moonBody);
+                artemisBtn.classList.add('active');
+                artemisBtn.textContent = '■ ABORT MISSION';
+
+                const flyBtn = document.getElementById('flyBtn');
+                if (flyBtn) flyBtn.classList.add('active');
+            }
+        });
+    }
 
     // ── Heat distortion post-process ──────────────────────────────────────
     heatDistortion = createHeatDistortion(renderer, scene, camera);
@@ -291,26 +340,29 @@ function animate() {
     // Sun always spins at fixed rate
     if (sun) sun.rotation.y += 0.0002;
 
-    // Planet orbits (speed-controlled) and realistic axial spin
-    // Freeze the planet being orbited so the ship stays locked to it cinematically
-    const orbitedName = shipController.orbitedBody?.name ?? null;
-    planets.forEach(({ group, mesh, data }) => {
-        if (data.name !== orbitedName) data.angle += data.speed * rotationSpeed;
-        const e  = data.eccentricity || 0;
-        const a  = data.distance;
-        const b  = a * Math.sqrt(1 - e * e);
-        const fc = a * e;
-        group.position.x = fc + a * Math.cos(data.angle);
-        group.position.z = b  * Math.sin(data.angle);
-        if (!focusController.isFocused) {
-            mesh.rotation.y += 0.0003 * (data.selfRotation || 1.0);
-        }
-    });
+    // Planet orbits (speed-controlled) and realistic axial spin.
+    // Freeze all orbits during Artemis mission — the flight path was computed
+    // from a position snapshot, so moving planets would drift away from the path.
+    if (!artemisMission?.active) {
+        const orbitedName = shipController.orbitedBody?.name ?? null;
+        planets.forEach(({ group, mesh, data }) => {
+            if (data.name !== orbitedName) data.angle += data.speed * rotationSpeed;
+            const e  = data.eccentricity || 0;
+            const a  = data.distance;
+            const b  = a * Math.sqrt(1 - e * e);
+            const fc = a * e;
+            group.position.x = fc + a * Math.cos(data.angle);
+            group.position.z = b  * Math.sin(data.angle);
+            if (!focusController.isFocused) {
+                mesh.rotation.y += 0.0003 * (data.selfRotation || 1.0);
+            }
+        });
 
-    // Moon orbits — independent of the orbit-speed slider
-    moons.forEach(({ pivot, moonDef }) => {
-        pivot.rotation.y += moonDef.speed * rotationSpeed;
-    });
+        // Moon orbits — independent of the orbit-speed slider
+        moons.forEach(({ pivot, moonDef }) => {
+            pivot.rotation.y += moonDef.speed * rotationSpeed;
+        });
+    }
 
     // Sun prominences update
     if (sun && sun.update) {
@@ -321,6 +373,7 @@ function animate() {
 
     mobileControls?.tick(delta);
     focusController.update();
+    artemisMission?.update(delta);
     shipController?.update(delta);
 
     if (heatDistortion) heatDistortion.render(elapsed);

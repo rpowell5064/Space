@@ -96,6 +96,10 @@ export class ShipController {
         this.onOrbitEnter  = null;  // (bodyName: string) => void
         this.onOrbitExit   = null;  // () => void
 
+        // Mission autopilot flag — set by ArtemisMission (and future missions)
+        // to suppress normal physics while the scripted path drives the ship.
+        this._missionActive = false;
+
         this._isMobile = navigator.maxTouchPoints > 0;
 
         this.shipGroup = new THREE.Group();
@@ -723,6 +727,11 @@ export class ShipController {
     update(dt) {
         if (!this.active) return;
         dt = Math.min(dt, 0.05);
+
+        // Mission autopilot — the ArtemisMission (or future missions) sets
+        // _missionActive = true and drives position / camera itself.
+        // We skip all physics but keep ticking particles (handled by mission).
+        if (this._missionActive) return;
 
         const k = this.keys;
 
