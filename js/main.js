@@ -345,7 +345,7 @@ function animate() {
     // from a position snapshot, so moving planets would drift away from the path.
     if (!artemisMission?.active) {
         const orbitedName = shipController.orbitedBody?.name ?? null;
-        planets.forEach(({ group, mesh, data }) => {
+        planets.forEach(({ group, mesh, data, cloudMesh, jupiterOverlay }) => {
             if (data.name !== orbitedName) data.angle += data.speed * rotationSpeed;
             const e  = data.eccentricity || 0;
             const a  = data.distance;
@@ -355,7 +355,13 @@ function animate() {
             group.position.z = b  * Math.sin(data.angle);
             if (!focusController.isFocused) {
                 mesh.rotation.y += 0.0003 * (data.selfRotation || 1.0);
+                // Cloud layer drifts slightly faster than Earth surface
+                if (cloudMesh) cloudMesh.rotation.y += 0.0003 * (data.selfRotation || 1.0) * 0.14;
             }
+            // Cloud shader: update time (shape evolution + drift)
+            if (cloudMesh) cloudMesh.material.uniforms.time.value = elapsed;
+            // Jupiter overlay: update time for animated bands + GRS
+            if (jupiterOverlay) jupiterOverlay.uniforms.time.value = elapsed;
         });
 
         // Moon orbits — independent of the orbit-speed slider

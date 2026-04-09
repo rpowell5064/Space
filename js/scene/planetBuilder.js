@@ -1,8 +1,8 @@
 import * as THREE from 'https://esm.sh/three@0.160.0';
 import { CSS2DObject } from 'https://esm.sh/three@0.160.0/examples/jsm/renderers/CSS2DRenderer.js';
 import { loadPlanetTexture, createSaturnRingTexture, createMoonTexture } from '../textures/planetTextures.js';
-import { createAtmosphereMaterial } from '../shaders/sunShader.js';
-import { ATMOSPHERE_COLORS } from '../data/solarSystemData.js';
+import { createAtmosphereMaterial, createJupiterOverlayMaterial, createEarthCloudMaterial } from '../shaders/sunShader.js';
+import { ATMOSPHERE_COLORS, ATMOSPHERE_CONFIG } from '../data/solarSystemData.js';
 
 export async function createPlanet(data, scene, textureLoader) {
     const planetGroup = new THREE.Group();
@@ -72,12 +72,37 @@ export async function createPlanet(data, scene, textureLoader) {
         planet.add(ring);
     }
 
-    // Atmosphere glow for Earth, Venus, Neptune
+    // Atmosphere glow — each planet uses tuned Fresnel power/opacity
     if (ATMOSPHERE_COLORS[data.name] !== undefined) {
+        const cfg = ATMOSPHERE_CONFIG[data.name] || { power: 3.0, opacity: 0.8, scale: 1.12 };
         planet.add(new THREE.Mesh(
-            new THREE.SphereGeometry(data.size * 1.12, 32, 32),
-            createAtmosphereMaterial(ATMOSPHERE_COLORS[data.name])
+            new THREE.SphereGeometry(data.size * cfg.scale, 32, 32),
+            createAtmosphereMaterial(ATMOSPHERE_COLORS[data.name], cfg.power, cfg.opacity)
         ));
+    }
+
+    // Earth: animated cloud layer — domain-warped FBM shader, sun-lit per fragment
+    let cloudMesh = null;
+    if (data.name === 'Earth') {
+        cloudMesh = new THREE.Mesh(
+            new THREE.SphereGeometry(data.size * 1.015, 64, 64),
+            createEarthCloudMaterial()
+        );
+        cloudMesh.renderOrder = 1;
+        planet.add(cloudMesh);
+    }
+
+    // Jupiter: 3-layer animated overlay (differential rotation + GRS vortex)
+    let jupiterOverlay = null;
+    if (data.name === 'Jupiter') {
+        const overlayMat = createJupiterOverlayMaterial();
+        const overlayMesh = new THREE.Mesh(
+            new THREE.SphereGeometry(data.size * 1.002, 64, 64),
+            overlayMat
+        );
+        overlayMesh.renderOrder = 1;
+        planet.add(overlayMesh);
+        jupiterOverlay = overlayMat;
     }
 
     // Moon-orbit group — tilted to planet's equatorial plane so moons orbit realistically
@@ -88,7 +113,7 @@ export async function createPlanet(data, scene, textureLoader) {
 
     scene.add(planetGroup);
 
-    return { group: planetGroup, mesh: planet, moonGroup, orbitLine, data: { ...data, angle: startAngle } };
+    return { group: planetGroup, mesh: planet, moonGroup, orbitLine, data: { ...data, angle: startAngle }, cloudMesh, jupiterOverlay };
 }
 
 export function createMoon(moonDef, parentPlanet, scene) {

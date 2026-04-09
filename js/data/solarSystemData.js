@@ -111,5 +111,14 @@ export const TEXTURE_FILES = {
 export const ATMOSPHERE_COLORS = {
     Earth:   0x4488FF,
     Venus:   0xFFCC88,
-    Neptune: 0x2244BB
+    Neptune: 0x2244BB,
+    Mars:    0xCC5522,  // rusty ochre dust haze
+};
+
+// Per-planet atmosphere tuning — power controls rim tightness, opacity controls density
+export const ATMOSPHERE_CONFIG = {
+    Earth:   { power: 3.0, opacity: 0.80, scale: 1.12 },
+    Venus:   { power: 2.5, opacity: 0.90, scale: 1.12 },
+    Neptune: { power: 3.0, opacity: 0.80, scale: 1.12 },
+    Mars:    { power: 4.5, opacity: 0.55, scale: 1.14 }, // thin CO2 haze + dust
 };
