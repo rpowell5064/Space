@@ -13,7 +13,7 @@ import { initControls } from './ui/controlsPanel.js';
 import { showFocusPanel, hideFocusPanel } from './ui/infoPanel.js';
 import { ShipController } from './spaceship.js';
 import { ArtemisMission } from './missions/artemisII.js';
-import { createHeatDistortion } from './effects/heatDistortion.js';
+import { createPostProcessing } from './effects/postProcessing.js';
 import { initMobileControls }  from './ui/mobileControls.js';
 
 // ── Scene ─────────────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.6;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.useLegacyLights = true; // legacy (non-physical) attenuation — scene tuned for these values
+renderer.useLegacyLights = true; // scene tuned for legacy (non-physical) attenuation
 document.body.appendChild(renderer.domElement);
 
 // ── CSS2DRenderer ─────────────────────────────────────────────────────────
@@ -89,10 +89,15 @@ async function init() {
     planets = planetResults;
     orbitLines.push(...planetResults.map(p => p.orbitLine));
 
-    MOON_DATA.forEach(moonDef => {
-        const parent = planets.find(p => p.data.name === moonDef.planet);
-        if (!parent) return;
-        const moonResult = createMoon(moonDef, parent, scene);
+    const moonResults = await Promise.all(
+        MOON_DATA.map(moonDef => {
+            const parent = planets.find(p => p.data.name === moonDef.planet);
+            if (!parent) return Promise.resolve(null);
+            return createMoon(moonDef, parent, scene, textureLoader);
+        })
+    );
+    moonResults.forEach(moonResult => {
+        if (!moonResult) return;
         moons.push({ pivot: moonResult.pivot, moonDef: moonResult.moonDef });
         orbitLines.push(moonResult.orbitLine);
     });
@@ -158,12 +163,14 @@ async function init() {
     });
 
     // ── Artemis II special event ──────────────────────────────────────────
-    artemisMission = new ArtemisMission(scene, camera, controls, shipController);
+    artemisMission = new ArtemisMission(scene, camera, controls, shipController, renderer);
     artemisMission.onStop = () => {
         const btn = document.getElementById('artemisBtn');
         if (btn) { btn.classList.remove('active'); btn.textContent = '⬤ ARTEMIS II MISSION'; }
         const flyBtn = document.getElementById('flyBtn');
         if (flyBtn) flyBtn.classList.remove('active');
+        // Restore the hamburger so the menu is accessible again after mission ends
+        document.getElementById('menuToggle')?.style.removeProperty('display');
     };
 
     const artemisBtn = document.getElementById('artemisBtn');
@@ -188,12 +195,19 @@ async function init() {
 
                 const flyBtn = document.getElementById('flyBtn');
                 if (flyBtn) flyBtn.classList.add('active');
+
+                // Close the mobile menu and hide the hamburger for the mission duration.
+                // The HUD has pointer-events:none so an open menu would intercept taps
+                // meant for the abort button — hiding the toggle prevents re-opening it.
+                document.getElementById('uiContainer')?.classList.remove('open');
+                document.getElementById('menuToggle')?.classList.remove('open');
+                document.getElementById('menuToggle')?.style.setProperty('display', 'none');
             }
         });
     }
 
-    // ── Heat distortion post-process ──────────────────────────────────────
-    heatDistortion = createHeatDistortion(renderer, scene, camera);
+    // ── Cinematic post-processing (bloom + heat + vignette + chroma) ─────
+    heatDistortion = createPostProcessing(renderer, scene, camera);
 
     // ── Mobile controls (no-op on desktop) ────────────────────────────────
     mobileControls = initMobileControls(shipController);
@@ -332,6 +346,11 @@ function animate() {
         labelRenderer.domElement.style.display = shipActive ? 'none' : '';
     }
 
+    // Star twinkle — tick each layer's time uniform
+    if (scene.userData.starLayers) {
+        scene.userData.starLayers.forEach(mat => { mat.uniforms.time.value = elapsed; });
+    }
+
     // Sun shader uniforms — time for animation, pulse for brightness variation
     if (sun && sun._sunMat) {
         sun._sunMat.uniforms.time.value  = elapsed;
@@ -358,8 +377,8 @@ function animate() {
                 // Cloud layer drifts slightly faster than Earth surface
                 if (cloudMesh) cloudMesh.rotation.y += 0.0003 * (data.selfRotation || 1.0) * 0.14;
             }
-            // Cloud shader: update time (shape evolution + drift)
-            if (cloudMesh) cloudMesh.material.uniforms.time.value = elapsed;
+            // Cloud shader time (only for procedural shader fallback — real texture has no uniforms)
+            if (cloudMesh?.material?.uniforms?.time !== undefined) cloudMesh.material.uniforms.time.value = elapsed;
             // Jupiter overlay: update time for animated bands + GRS
             if (jupiterOverlay) jupiterOverlay.uniforms.time.value = elapsed;
         });
@@ -382,8 +401,12 @@ function animate() {
     artemisMission?.update(delta);
     shipController?.update(delta);
 
-    if (heatDistortion) heatDistortion.render(elapsed);
-    else renderer.render(scene, camera);
+    if (heatDistortion) {
+        heatDistortion.updateExposure(renderer, camera.position.length(), delta);
+        heatDistortion.render(elapsed);
+    } else {
+        renderer.render(scene, camera);
+    }
     labelRenderer.render(scene, camera);
 }
 

@@ -2,6 +2,7 @@
 // Controls: W/S throttle · A/D yaw · Q/E roll · Mouse pitch+yaw
 //           Arrow keys strafe · Space boost · Shift brake · G warp to target · F exit
 import * as THREE from 'https://esm.sh/three@0.160.0';
+import { EnginePlume } from './effects/enginePlume.js';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const SHIP_SCALE = 0.012;
@@ -100,6 +101,8 @@ export class ShipController {
         // to suppress normal physics while the scripted path drives the ship.
         this._missionActive = false;
 
+        this._elapsed = 0; // accumulated time for plume shader
+
         this._isMobile = navigator.maxTouchPoints > 0;
 
         this.shipGroup = new THREE.Group();
@@ -159,7 +162,7 @@ export class ShipController {
         });
         const nozzle = new THREE.MeshStandardMaterial({
             color: 0xaaeeff, emissive: 0x2266ff,
-            emissiveIntensity: 6.0, transparent: true, opacity: 0.93
+            emissiveIntensity: 1.2, transparent: true, opacity: 0.93
         });
 
         const add = (geo, mat, px=0, py=0, pz=0, rx=0, ry=0, rz=0) => {
@@ -236,7 +239,7 @@ export class ShipController {
                 new THREE.MeshStandardMaterial({
                     color:    side < 0 ? 0xff2200 : 0x00ff44,
                     emissive: side < 0 ? 0xcc0000 : 0x00cc22,
-                    emissiveIntensity: 4.5, transparent: true, opacity: 0.95
+                    emissiveIntensity: 1.5, transparent: true, opacity: 0.95
                 }),
                 side * 5.0, -0.06, 2.5);
         });
@@ -271,14 +274,14 @@ export class ShipController {
             // Nozzle inner core
             this._engineGlows.push(add(
                 new THREE.CircleGeometry(0.10, 22),
-                new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x99ddff, emissiveIntensity: 9.0, transparent: true, opacity: 0.98 }),
+                new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x99ddff, emissiveIntensity: 1.8, transparent: true, opacity: 0.98 }),
                 ex, ey, 2.89
             ));
         });
 
         // ── Nose light ──
         add(new THREE.SphereGeometry(0.048, 8, 6),
-            new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xaaccff, emissiveIntensity: 5.0, transparent: true, opacity: 0.95 }),
+            new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xaaccff, emissiveIntensity: 1.4, transparent: true, opacity: 0.95 }),
             0, 0, -6.1);
 
         // ── Ventral keel ──
@@ -286,86 +289,30 @@ export class ShipController {
         add(new THREE.BoxGeometry(0.07, 0.04, 1.4), accent, 0, -0.61, -0.8);
 
         // ── Scene lights ──
-        const fill1 = new THREE.PointLight(0x88bbff, 14.0, 80);
+        // Fill lights — PointLight.distance is world-space, not affected by SHIP_SCALE.
+        // Ship hull is ~0.072 world units long (6 local × 0.012 scale), so 0.35 world
+        // units covers the hull without reaching nearby planets/moons (which are ≥1 wu away).
+        // Old values of 80/60/28 wu illuminated the Moon to near-full brightness during
+        // Artemis periapsis (~5.5 wu) via legacy attenuation: 1-(5.5/80)² ≈ 1.0.
+        const fill1 = new THREE.PointLight(0x88bbff, 14.0, 0.35);
         fill1.position.set(0, 3, -3); this.shipGroup.add(fill1);
-        const fill2 = new THREE.PointLight(0xffeedd, 6.0, 60);
+        const fill2 = new THREE.PointLight(0xffeedd, 6.0, 0.25);
         fill2.position.set(0, -2.5, 1.5); this.shipGroup.add(fill2);
         // Engine point light — intensity driven by thrust in update()
-        this._engineLight = new THREE.PointLight(0x44aaff, 4.0, 28);
+        this._engineLight = new THREE.PointLight(0x44aaff, 4.0, 0.15);
         this._engineLight.position.set(0, 0, 4.2);
         this.shipGroup.add(this._engineLight);
     }
 
-    // ── Engine particles ───────────────────────────────────────────────────
+    // ── Engine particle trails ─────────────────────────────────────────────
+    // Single InstancedBufferGeometry + custom shader: core jet, plume bloom, idle shimmer.
+    // Particles live in scene space (not shipGroup) so they trail naturally in world coords.
     _buildEngineParticles() {
-        const coreSprite  = this._makeGlowSprite(true);   // tight bright core
-        const plumeSprite = this._makeGlowSprite(false);  // soft diffuse halo
-
-        this._core  = this._makeLayer(1400, 0.034, coreSprite);
-        this._cLife = new Float32Array(1400);
-        this._cVel  = new Float32Array(1400 * 3);
-        this._cHead = 0;
-
-        this._plume  = this._makeLayer(1200, 0.120, plumeSprite);
-        this._pLife  = new Float32Array(1200);
-        this._pVel   = new Float32Array(1200 * 3);
-        this._pHead  = 0;
-
-        // Match updated nacelle nozzle positions
-        this._exits = [
+        const exits = [
             new THREE.Vector3(-1.10, -0.20, 2.88),
             new THREE.Vector3( 1.10, -0.20, 2.88),
         ];
-    }
-
-    _makeLayer(maxCount, pointSize, texture) {
-        const pos = new Float32Array(maxCount * 3).fill(1e6);
-        const col = new Float32Array(maxCount * 3);
-        const geo = new THREE.BufferGeometry();
-        const posAttr = new THREE.BufferAttribute(pos, 3);
-        const colAttr = new THREE.BufferAttribute(col, 3);
-        geo.setAttribute('position', posAttr);
-        geo.setAttribute('color',    colAttr);
-        geo.setDrawRange(0, maxCount);
-
-        const mat = new THREE.PointsMaterial({
-            size: pointSize, map: texture,
-            vertexColors: true, sizeAttenuation: true,
-            transparent: true,
-            blending: THREE.AdditiveBlending, depthWrite: false,
-        });
-
-        const pts = new THREE.Points(geo, mat);
-        pts.frustumCulled = false;
-        this.scene.add(pts);
-        return { posAttr, colAttr, pos, col };
-    }
-
-    _makeGlowSprite(sharp = true) {
-        const c = document.createElement('canvas');
-        c.width = c.height = 128;
-        const ctx = c.getContext('2d');
-        ctx.clearRect(0, 0, 128, 128);
-        const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-        if (sharp) {
-            // Hot inner core: bright white centre → cyan → deep blue
-            g.addColorStop(0.00, 'rgba(255,255,255,1.00)');
-            g.addColorStop(0.10, 'rgba(240,255,255,0.98)');
-            g.addColorStop(0.28, 'rgba(160,220,255,0.82)');
-            g.addColorStop(0.55, 'rgba(60,140,255,0.36)');
-            g.addColorStop(0.80, 'rgba(20,70,210,0.08)');
-            g.addColorStop(1.00, 'rgba(5, 30,170,0.00)');
-        } else {
-            // Soft outer plume: wide cyan–blue diffuse halo
-            g.addColorStop(0.00, 'rgba(180,230,255,0.80)');
-            g.addColorStop(0.22, 'rgba(100,185,255,0.48)');
-            g.addColorStop(0.50, 'rgba(40,110,255,0.22)');
-            g.addColorStop(0.75, 'rgba(15, 55,210,0.07)');
-            g.addColorStop(1.00, 'rgba(0,  20,160,0.00)');
-        }
-        ctx.fillStyle = g;
-        ctx.fillRect(0, 0, 128, 128);
-        return new THREE.CanvasTexture(c);
+        this._enginePlume = new EnginePlume(this.scene, exits);
     }
 
     // ── HUD ───────────────────────────────────────────────────────────────
@@ -727,6 +674,7 @@ export class ShipController {
     update(dt) {
         if (!this.active) return;
         dt = Math.min(dt, 0.05);
+        this._elapsed += dt;
 
         // Mission autopilot — the ArtemisMission (or future missions) sets
         // _missionActive = true and drives position / camera itself.
@@ -764,9 +712,8 @@ export class ShipController {
             this._camLookAt.copy(this.shipGroup.position.clone().addScaledVector(fwd, 20));
             this.camera.lookAt(this._camLookAt);
 
-            // Full engine particles during warp
-            this._spawnParticles(20, fwd, 1.0, 1.0);
-            this._tickParticles();
+            this._enginePlume.spawn(20, this.shipGroup.position, this.shipGroup.quaternion, this._vel, new THREE.Vector3(), fwd, 1.0, 1.0, dt);
+            this._enginePlume.tick(dt, this.camera, 1.0, this._elapsed);
 
             if (this._spdVal)      this._spdVal.textContent = 'WRP';
             if (this._orbitStatEl) this._orbitStatEl.innerHTML =
@@ -821,10 +768,9 @@ export class ShipController {
             this._camLookAt.copy(orbitLookTarget);
             this.camera.lookAt(this._camLookAt);
 
-            // Idle engine particles
             const prograde = new THREE.Vector3(-Math.sin(this._orbitAngle), 0, Math.cos(this._orbitAngle));
-            this._spawnParticles(0, prograde, 0, 0);
-            this._tickParticles();
+            this._enginePlume.spawn(0, this.shipGroup.position, this.shipGroup.quaternion, this._vel, new THREE.Vector3(), prograde, 0, 0, dt);
+            this._enginePlume.tick(dt, this.camera, 0, this._elapsed);
 
             // HUD: show orbit status + prominent break hint
             if (this._spdVal) this._spdVal.textContent = '000';
@@ -977,20 +923,34 @@ export class ShipController {
         const throttleFrac  = Math.min(curSpd / MAX_SPEED, 1.0);
         const thrForDisplay = Math.min(throttleFrac + (k['KeyW'] || this._fullThrottle ? 0.12 : 0), 1.0);
         this._engineGlows.forEach((g, idx) => {
-            const base = idx % 2 === 0 ? 2.0 + thrForDisplay * 6.0 : 4.0 + thrForDisplay * 10.0;
-            g.material.emissiveIntensity = base + Math.random() * 1.2;
+            // Keep emissiveIntensity below ~3.0 — nozzle emissive color has blue channel=1.0,
+            // so intensity×1.0 is what hits the bloom threshold. Cap at ~2.5 for subtle glow
+            // without creating the rectangular blue bloom artifact.
+            const base = idx % 2 === 0 ? 0.9 + thrForDisplay * 1.6 : 1.2 + thrForDisplay * 2.0;
+            g.material.emissiveIntensity = base + Math.random() * 0.3;
         });
         if (this._engineLight) {
-            this._engineLight.intensity = 2.0 + thrForDisplay * 22.0 + Math.random() * 3.0;
+            this._engineLight.intensity = 1.2 + thrForDisplay * 5.0 + Math.random() * 0.8;
         }
 
         // Particles — exhaust direction blends nose with velocity for realistic trail angle
-        const spawnN = Math.round(14 + throttleFrac * 18); // 14–32 per engine
+        const spawnN = Math.round(3 + throttleFrac * 22); // 3 at idle → 25 at full boost
         const exhaustDir = curSpd > 0.5
             ? forward.clone().lerp(this._vel.clone().normalize(), Math.min(curSpd / 60.0, 0.18)).normalize()
             : forward;
-        this._spawnParticles(spawnN, exhaustDir, throttleFrac, throttleFrac);
-        this._tickParticles();
+        const boostFrac   = (this._fullThrottle && this._boostCharge > 0) ? this._boostCharge : 0;
+        const thrustLevel = Math.min(1.0, throttleFrac + boostFrac * 0.18);
+
+        // Angular velocity in world space — used by EnginePlume to add nozzle tangential
+        // velocity to each particle so the trail stays attached through yaw/pitch/roll.
+        // Yaw rotates around ship world-up; pitch around local right; roll around local Z.
+        const omega = new THREE.Vector3()
+            .addScaledVector(up,                                                 this._angVelYaw)
+            .addScaledVector(new THREE.Vector3(1, 0, 0).applyQuaternion(q),     this._angVelPitch)
+            .addScaledVector(new THREE.Vector3(0, 0, 1).applyQuaternion(q),     this._angVelRoll);
+
+        this._enginePlume.spawn(spawnN, this.shipGroup.position, this.shipGroup.quaternion, this._vel, omega, exhaustDir, throttleFrac, boostFrac, dt);
+        this._enginePlume.tick(dt, this.camera, thrustLevel, this._elapsed);
 
         // Camera follow — dt-based exponential smoothing + hard distance clamp.
         // _mouseBlendIn doubles as a "settle" factor after orbit exit:
@@ -1056,130 +1016,4 @@ export class ShipController {
         }
     }
 
-    // ── Spawn particles at both engine exits ──────────────────────────────
-    _spawnParticles(countPerEngine, forward, boostIntensity, thrust) {
-        const q   = this.shipGroup.quaternion;
-        const pos = this.shipGroup.position;
-        const t   = Math.min(Math.max(thrust, 0), 1);
-
-        // Perpendicular basis computed once per call — no per-particle allocation
-        const rt = new THREE.Vector3(forward.y, -forward.x, 0);
-        if (rt.lengthSq() < 0.01) rt.set(0, forward.z, -forward.y);
-        rt.normalize();
-        const up = new THREE.Vector3().crossVectors(forward, rt);
-
-        // Idle shimmer — faint blue pulse at nozzle mouths
-        if (t < 0.12) {
-            for (let eng = 0; eng < 2; eng++) {
-                const we = this._exits[eng].clone().multiplyScalar(SHIP_SCALE).applyQuaternion(q).add(pos);
-                for (let n = 0; n < 4; n++) {
-                    const idx = this._cHead % 1400; this._cHead++;
-                    const sp  = 0.0007;
-                    this._core.pos[idx*3]   = we.x; this._core.pos[idx*3+1] = we.y; this._core.pos[idx*3+2] = we.z;
-                    this._cVel[idx*3]   = -forward.x*0.0005+(Math.random()-.5)*sp;
-                    this._cVel[idx*3+1] = -forward.y*0.0005+(Math.random()-.5)*sp;
-                    this._cVel[idx*3+2] = -forward.z*0.0005+(Math.random()-.5)*sp;
-                    this._cLife[idx] = 0.30;
-                    this._core.col[idx*3]=0.012; this._core.col[idx*3+1]=0.030; this._core.col[idx*3+2]=0.055;
-                }
-            }
-            return;
-        }
-
-        // Spawn counts — core is tighter/brighter, plume is wide and long-lived
-        const coreN  = Math.max(6,  Math.floor(countPerEngine * (0.55 + t * 0.45)));
-        const plumeN = Math.max(3,  Math.floor(countPerEngine * (0.25 + t * 0.45)));
-
-        for (let eng = 0; eng < 2; eng++) {
-            const we = this._exits[eng].clone().multiplyScalar(SHIP_SCALE).applyQuaternion(q).add(pos);
-
-            // ── Core: tight bright hot beam ────────────────────────────────
-            // Particles are pre-seeded backward along the trail so the stream
-            // looks dense at the moment of spawn (no "building up" delay).
-            for (let n = 0; n < coreN; n++) {
-                const idx  = this._cHead % 1400; this._cHead++;
-                const spd  = (0.006 + Math.random()*0.005) * (0.25 + t*0.75);
-                const cone = (0.04 + boostIntensity*0.05) * Math.random();
-                const th   = Math.random() * Math.PI * 2;
-                const sr   = cone * spd;
-                const back = Math.random() * 0.32 * (0.4 + t * 0.6);
-                this._core.pos[idx*3]   = we.x - forward.x * back;
-                this._core.pos[idx*3+1] = we.y - forward.y * back;
-                this._core.pos[idx*3+2] = we.z - forward.z * back;
-                this._cVel[idx*3]   = -forward.x*spd + (rt.x*Math.cos(th)+up.x*Math.sin(th))*sr;
-                this._cVel[idx*3+1] = -forward.y*spd + (rt.y*Math.cos(th)+up.y*Math.sin(th))*sr;
-                this._cVel[idx*3+2] = -forward.z*spd + (rt.z*Math.cos(th)+up.z*Math.sin(th))*sr;
-                this._cLife[idx] = 0.50 + t*0.50;
-                // White-hot at birth; colour evolves in _tickParticles
-                const cs = 0.08 + t*0.60;
-                this._core.col[idx*3] = cs; this._core.col[idx*3+1] = cs*0.92; this._core.col[idx*3+2] = cs;
-            }
-
-            // ── Plume: wide cinematic bloom ────────────────────────────────
-            for (let n = 0; n < plumeN; n++) {
-                const idx  = this._pHead % 1200; this._pHead++;
-                const spd  = (0.0022 + Math.random()*0.0028) * (0.15 + t*0.85);
-                const cone = (0.14 + boostIntensity*0.14) * Math.random();
-                const th   = Math.random() * Math.PI * 2;
-                const sr   = cone * spd;
-                const back = Math.random() * 0.45 * (0.3 + t * 0.7);
-                this._plume.pos[idx*3]   = we.x - forward.x * back;
-                this._plume.pos[idx*3+1] = we.y - forward.y * back;
-                this._plume.pos[idx*3+2] = we.z - forward.z * back;
-                this._pVel[idx*3]   = -forward.x*spd + (rt.x*Math.cos(th)+up.x*Math.sin(th))*sr;
-                this._pVel[idx*3+1] = -forward.y*spd + (rt.y*Math.cos(th)+up.y*Math.sin(th))*sr;
-                this._pVel[idx*3+2] = -forward.z*spd + (rt.z*Math.cos(th)+up.z*Math.sin(th))*sr;
-                this._pLife[idx] = 0.65 + t*0.35;
-                const cs = 0.025 + t*0.30;
-                this._plume.col[idx*3]=cs*0.12; this._plume.col[idx*3+1]=cs*0.72; this._plume.col[idx*3+2]=cs;
-            }
-        }
-    }
-
-    // ── Advance particle lifetimes ─────────────────────────────────────────
-    _tickParticles() {
-        // Core — white-hot at birth → electric cyan → deep blue-violet
-        for (let i = 0; i < 1400; i++) {
-            if (this._cLife[i] <= 0) continue;
-            this._cLife[i] -= 0.020;
-            if (this._cLife[i] <= 0) {
-                this._cLife[i] = 0;
-                this._core.pos[i*3] = this._core.pos[i*3+1] = this._core.pos[i*3+2] = 1e6;
-                continue;
-            }
-            const t = this._cLife[i];
-            this._core.pos[i*3]   += this._cVel[i*3];
-            this._core.pos[i*3+1] += this._cVel[i*3+1];
-            this._core.pos[i*3+2] += this._cVel[i*3+2];
-            // t: 1.0=fresh → 0.0=dead
-            // >0.7 white-hot, 0.4–0.7 cyan, <0.4 blue-violet
-            const bright = Math.min(t * 1.4, 1.0);
-            this._core.col[i*3]   = t > 0.70 ? bright * 0.95 : t > 0.40 ? bright * 0.15 : bright * 0.08;
-            this._core.col[i*3+1] = t > 0.70 ? bright * 0.96 : t > 0.40 ? bright * 0.85 : bright * 0.40;
-            this._core.col[i*3+2] = bright;   // blue channel persists longest
-        }
-        this._core.posAttr.needsUpdate = true;
-        this._core.colAttr.needsUpdate = true;
-
-        // Plume — wide soft cyan halo fades to deep blue-indigo
-        for (let i = 0; i < 1200; i++) {
-            if (this._pLife[i] <= 0) continue;
-            this._pLife[i] -= 0.010;
-            if (this._pLife[i] <= 0) {
-                this._pLife[i] = 0;
-                this._plume.pos[i*3] = this._plume.pos[i*3+1] = this._plume.pos[i*3+2] = 1e6;
-                continue;
-            }
-            const t = this._pLife[i];
-            this._plume.pos[i*3]   += this._pVel[i*3];
-            this._plume.pos[i*3+1] += this._pVel[i*3+1];
-            this._plume.pos[i*3+2] += this._pVel[i*3+2];
-            // Cyan near nozzle, fading to indigo at tail
-            this._plume.col[i*3]   = t * 0.05;
-            this._plume.col[i*3+1] = t > 0.5 ? t * 0.60 : t * 0.30;
-            this._plume.col[i*3+2] = t * 0.92;
-        }
-        this._plume.posAttr.needsUpdate = true;
-        this._plume.colAttr.needsUpdate = true;
-    }
 }

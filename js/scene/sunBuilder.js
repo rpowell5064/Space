@@ -137,6 +137,7 @@ function makeGlowSprite(sz, stops) {
     return spr;
 }
 
+
 export async function createSun(scene) {
     const sunMat = createSunMaterial();
     const sun    = new THREE.Mesh(new THREE.SphereGeometry(SUN_RADIUS, 64, 64), sunMat);
@@ -203,37 +204,37 @@ export async function createSun(scene) {
         {
             sz: SUN_RADIUS * 7,
             stops: [
-                [0.00, 'rgba(255,190, 70,0.88)'],
-                [0.10, 'rgba(255,130, 25,0.72)'],
-                [0.28, 'rgba(235, 65,  5,0.38)'],
-                [0.55, 'rgba(185, 22,  0,0.14)'],
+                [0.00, 'rgba(255,190, 70,0.44)'],
+                [0.10, 'rgba(255,130, 25,0.36)'],
+                [0.28, 'rgba(235, 65,  5,0.19)'],
+                [0.55, 'rgba(185, 22,  0,0.07)'],
                 [1.00, 'rgba(140,  0,  0,0.00)'],
             ],
         },
         {
             sz: SUN_RADIUS * 14,
             stops: [
-                [0.00, 'rgba(255,150, 40,0.52)'],
-                [0.14, 'rgba(245, 85, 10,0.32)'],
-                [0.38, 'rgba(205, 32,  0,0.13)'],
-                [0.68, 'rgba(160, 10,  0,0.04)'],
+                [0.00, 'rgba(255,150, 40,0.26)'],
+                [0.14, 'rgba(245, 85, 10,0.16)'],
+                [0.38, 'rgba(205, 32,  0,0.07)'],
+                [0.68, 'rgba(160, 10,  0,0.02)'],
                 [1.00, 'rgba(125,  0,  0,0.00)'],
             ],
         },
         {
             sz: SUN_RADIUS * 22,
             stops: [
-                [0.00, 'rgba(230, 90, 12,0.18)'],
-                [0.22, 'rgba(200, 45,  0,0.08)'],
-                [0.55, 'rgba(165, 18,  0,0.03)'],
+                [0.00, 'rgba(230, 90, 12,0.09)'],
+                [0.22, 'rgba(200, 45,  0,0.04)'],
+                [0.55, 'rgba(165, 18,  0,0.02)'],
                 [1.00, 'rgba(120,  0,  0,0.00)'],
             ],
         },
         {
             sz: SUN_RADIUS * 36,
             stops: [
-                [0.00, 'rgba(200, 60,  8,0.08)'],
-                [0.30, 'rgba(170, 30,  0,0.03)'],
+                [0.00, 'rgba(200, 60,  8,0.04)'],
+                [0.30, 'rgba(170, 30,  0,0.02)'],
                 [0.65, 'rgba(140, 10,  0,0.01)'],
                 [1.00, 'rgba(110,  0,  0,0.00)'],
             ],
@@ -242,7 +243,7 @@ export async function createSun(scene) {
     glows.forEach(({ sz, stops }) => scene.add(makeGlowSprite(sz, stops)));
 
     // Secondary point light — same colour as primary so no colour-banding ring at range boundary
-    const sunLight = new THREE.PointLight(0xFFEECC, 1.4, 5500);
+    const sunLight = new THREE.PointLight(0xFFEECC, 0.6, 5500);
     sunLight.position.set(0, 0, 0);
     sunLight.castShadow = false;
     scene.add(sunLight);

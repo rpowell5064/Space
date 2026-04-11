@@ -245,8 +245,6 @@ const CLOUD_FRAG = `
         float lat = abs(uv.y * 2.0 - 1.0); // 0=equator, 1=pole
 
         // ── Domain warp — two passes, each CENTERED around 0 ─────────────
-        // FBM output is ~[0, 0.95] with mean ~0.47.  Subtracting 0.47 gives
-        // a warp field that displaces ± equally rather than only positively.
         vec2 q = vec2(
             fbm5(uv * 2.5 + vec2(t * 0.55, 0.0))        - 0.47,
             fbm5(uv * 2.5 + vec2(1.7, 9.2+t * 0.40))    - 0.47
@@ -260,44 +258,61 @@ const CLOUD_FRAG = `
         // ── Cloud density ─────────────────────────────────────────────────
         float d1 = fbm7(wuv * 3.2 + vec2(t * 0.12, 0.0));
         float d2 = fbm5(wuv * 6.0 + vec2(t * 0.20, t * 0.07) + vec2(3.1, 5.4));
-        // FBM mean ≈ 0.47; this density also has mean ≈ 0.47
         float density = d1 * 0.70 + d2 * 0.30;
+
+        // ── Cloud thickness — independent high-freq sample ────────────────
+        // Separates WHERE clouds exist (density) from HOW THICK they are.
+        // Same-coverage area can be wispy cirrus or towering cumulonimbus.
+        float thickness = fbm5(wuv * 9.5 + vec2(t * 0.18, t * 0.11) + vec2(6.2, 2.7));
+        float thickFactor = smoothstep(0.33, 0.68, thickness);
 
         // ── Latitude shaping ─────────────────────────────────────────────
         // Subtropics (20–40°) are Earth's dry zones — thin cloud cover
         float dryBelt = smoothstep(0.18,0.35,lat) * (1.0-smoothstep(0.35,0.58,lat)) * 0.06;
         density -= dryBelt;
 
-        // ── Threshold — mean ≈ 0.47, start below it for ~60% coverage ────
-        float cloud = smoothstep(0.40, 0.55, density);
+        // ── Threshold — wider window = far more gradation thin→thick ──────
+        // Old 0.15-wide window snapped most areas to near-full; this 0.30-wide
+        // window produces a natural range from wispy to solid coverage.
+        float cloud = smoothstep(0.36, 0.66, density);
 
-        // Polar cloud decks poleward of ~65° (Southern Ocean, Arctic)
+        // Modulate coverage by local thickness: thin areas are sparser
+        cloud *= mix(0.50, 1.0, thickFactor);
+
+        // Polar cloud decks poleward of ~65° — reduced max to break up solid caps
         float poleBlend = smoothstep(0.62, 0.92, lat);
         float poleFbm   = fbm5(uv * 4.5 + vec2(t * 0.04, 0.0));
-        cloud = max(cloud, poleBlend * smoothstep(0.34, 0.50, poleFbm) * 0.88);
+        cloud = max(cloud, poleBlend * smoothstep(0.34, 0.52, poleFbm) * 0.70);
 
         // ITCZ: extra convective towers in deep tropics (±12°)
-        float itczBoost = smoothstep(0.28, 0.0, lat) * 0.10;
+        float itczBoost = smoothstep(0.28, 0.0, lat) * 0.08;
         cloud = clamp(cloud + itczBoost, 0.0, 1.0);
 
-        // Discard fully transparent fragments AFTER all cloud sources are added
         if(cloud < 0.004) discard;
 
         // ── Sun lighting ─────────────────────────────────────────────────
-        // Sun is at world origin; vWorldPos is fragment's world position
-        vec3  sunDir  = normalize(-vWorldPos);
-        float ndotl   = dot(vWorldNormal, sunDir);
-        // Soft terminator: 25° transition zone (~300 km deep in reality)
+        vec3  sunDir   = normalize(-vWorldPos);
+        float ndotl    = dot(vWorldNormal, sunDir);
         float sunLight = smoothstep(-0.10, 0.25, ndotl);
 
-        vec3 dayColor   = vec3(0.96, 0.97, 1.00);
+        // ── Cloud colour — varies by thickness ────────────────────────────
+        // Thin cirrus/altostratus: cooler, dimmer blue-grey
+        // Thick cumulonimbus tops: bright warm white
+        // This breaks the "uniform white hemisphere" look.
+        vec3 thinColor  = vec3(0.78, 0.82, 0.88); // cool blue-grey translucent wisps
+        vec3 thickColor = vec3(0.97, 0.97, 0.95); // bright near-white dense tops
+        vec3 dayColor   = mix(thinColor, thickColor, thickFactor * cloud);
         vec3 nightColor = vec3(0.03, 0.04, 0.06);
         vec3 cloudColor = mix(nightColor, dayColor, sunLight);
-        // Thicker clouds slightly darker underneath (self-shadowing)
-        cloudColor *= 0.86 + cloud * 0.16;
 
-        // ── Alpha ─────────────────────────────────────────────────────────
-        float alpha = cloud * 0.92;
+        // Self-shadowing: wider range (0.70–1.02) so thick clouds read clearly
+        // brighter than thin translucent ones
+        cloudColor *= 0.70 + cloud * 0.32;
+
+        // ── Alpha — thin clouds translucent, thick ones more opaque ──────
+        // Old: uniform cloud * 0.92 → everywhere near-opaque
+        // New: modulated by thickness → natural variation from wispy to solid
+        float alpha = cloud * mix(0.42, 0.88, thickFactor);
 
         gl_FragColor = vec4(cloudColor, alpha);
     }
@@ -442,6 +457,126 @@ export function createJupiterOverlayMaterial() {
         vertexShader:   JUPITER_OVERLAY_VERT,
         fragmentShader: JUPITER_OVERLAY_FRAG,
         transparent:    true,
+        depthWrite:     false,
+        side:           THREE.FrontSide,
+    });
+}
+
+// ── Physically-based atmospheric scattering ───────────────────────────────────
+// Replaces the pure Fresnel atmosphere with:
+//   • Rayleigh scattering — wavelength-dependent; gives planets their colour from space
+//     (blue Earth, orange Mars dust haze, yellow Venus cloud deck)
+//   • Mie scattering — forward-scattering aerosols; creates the bright silver lining
+//     visible where the atmosphere meets sunlight at the terminator
+//   • Correct terminator — atmosphere only glows on the sun-lit hemisphere;
+//     the night side goes dark (the old Fresnel material glowed all the way around)
+//   • Twilight band — warm orange/red refracted light at the terminator edge
+//
+// Why this is more realistic: the Fresnel approach ignores where the sun actually is,
+// producing a halo that is equally bright on both the day and night sides. Real planets
+// seen from orbit have atmosphere visible only where sunlight enters the gas column.
+// The Rayleigh phase function (P ∝ 1+cos²θ) correctly brightens the back-scatter lobe.
+// The Henyey-Greenstein Mie phase (g=0.76) places a sharp forward lobe exactly where
+// we see the bright limb on real planetary imagery.
+//
+// Sun is always at world origin, so L = normalize(-vWorldPos) — no uniform needed.
+// This keeps the shader self-contained without per-frame uniform updates.
+
+const SCATTER_VERT = /* glsl */`
+    varying vec3 vWorldNormal;
+    varying vec3 vViewDir;
+    varying vec3 vWorldPos;
+    void main() {
+        vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+        vec4 wp      = modelMatrix * vec4(position, 1.0);
+        vWorldPos    = wp.xyz;
+        vec4 vp      = modelViewMatrix * vec4(position, 1.0);
+        vViewDir     = normalize(-vp.xyz);
+        gl_Position  = projectionMatrix * vp;
+    }
+`;
+
+const SCATTER_FRAG = /* glsl */`
+    uniform vec3  rayleighColor;
+    uniform vec3  mieColor;
+    uniform float atmPower;
+    uniform float atmOpacity;
+    uniform float mieStrength;
+
+    varying vec3 vWorldNormal;
+    varying vec3 vViewDir;
+    varying vec3 vWorldPos;
+
+    void main() {
+        vec3 N = normalize(vWorldNormal);
+        vec3 V = normalize(vViewDir);
+        // Sun is at world origin; direction from surface point to sun
+        vec3 L = normalize(-vWorldPos);
+
+        // ── Rayleigh phase function ─────────────────────────────────────────
+        // P(θ) = 3/4 · (1 + cos²θ), θ = scattering angle between view and sun
+        float cosTheta      = dot(-V, L);
+        float rayleighPhase = 0.75 * (1.0 + cosTheta * cosTheta);
+
+        // ── Terminator — smooth day/night boundary ──────────────────────────
+        float NdotL   = dot(N, L);
+        float sunSide = smoothstep(-0.20, 0.30, NdotL);
+
+        // ── Mie phase (Henyey-Greenstein, g=0.76) ──────────────────────────
+        // Models forward-scattering aerosol haze; peaks toward sun
+        float g       = 0.76;
+        float cosT    = clamp(cosTheta, -1.0, 1.0);
+        float denom   = 1.0 + g*g - 2.0*g*cosT;
+        float miePhase = (1.0 - g*g) / (4.0 * 3.14159265 * pow(max(denom, 0.0001), 1.5));
+        miePhase = clamp(miePhase * 0.25, 0.0, 1.0);
+
+        // ── Limb (Fresnel) — stronger at grazing view angles ────────────────
+        float NdotV   = max(0.0, dot(N, V));
+        float fresnel = pow(1.0 - NdotV, atmPower);
+
+        // ── Twilight band — warm refracted light at the terminator ──────────
+        // The real sunrise/sunset limb shows an orange-to-blue gradient as
+        // progressively shorter paths scatter into the shadow zone.
+        float twi     = smoothstep(-0.30, 0.0, NdotL) * (1.0 - sunSide);
+        vec3 twilight = vec3(1.0, 0.42, 0.12) * twi * 0.40;
+
+        // ── Compose ─────────────────────────────────────────────────────────
+        vec3 rayleigh   = rayleighColor * rayleighPhase * sunSide;
+        vec3 mie        = mieColor * miePhase * sunSide * mieStrength;
+        vec3 finalColor = rayleigh + mie + twilight;
+
+        float alpha = fresnel * atmOpacity * max(0.06, sunSide + twi * 0.5);
+        if (alpha < 0.004) discard;
+
+        gl_FragColor = vec4(finalColor, alpha);
+    }
+`;
+
+// createScatteringAtmosphereMaterial — physically-based drop-in for createAtmosphereMaterial.
+// hexColor:   Rayleigh scatter tint (0x4488FF for Earth's blue, 0xFFCC88 for Venus)
+// power:      Fresnel exponent — higher = tighter rim
+// opacity:    peak alpha at grazing angle
+// mieStr:     Mie lobe strength — higher on hazy/cloudy worlds (Venus=0.9, Mars=0.35)
+// mieHex:     Mie colour — warm white for most planets, orange for dusty Mars
+export function createScatteringAtmosphereMaterial(
+    hexColor,
+    power   = 3.0,
+    opacity = 0.8,
+    mieStr  = 0.4,
+    mieHex  = 0xFFEECC
+) {
+    return new THREE.ShaderMaterial({
+        uniforms: {
+            rayleighColor: { value: new THREE.Color(hexColor) },
+            mieColor:      { value: new THREE.Color(mieHex) },
+            atmPower:      { value: power },
+            atmOpacity:    { value: opacity },
+            mieStrength:   { value: mieStr },
+        },
+        vertexShader:   SCATTER_VERT,
+        fragmentShader: SCATTER_FRAG,
+        transparent:    true,
+        blending:       THREE.AdditiveBlending,
         depthWrite:     false,
         side:           THREE.FrontSide,
     });

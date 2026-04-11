@@ -105,24 +105,30 @@ function _buildBelt(scene, rockNormalTexture, asteroidSpriteTexture) {
     asteroidSpriteGroup = new THREE.Group();
     scene.add(asteroidSpriteGroup);
 
-    // Procedural soft-circle sprite — avoids white-square artifact from opaque PNG
-    const sprC = document.createElement('canvas');
-    sprC.width = 64; sprC.height = 64;
-    const sprCtx = sprC.getContext('2d');
-    const sprGrad = sprCtx.createRadialGradient(32, 32, 0, 32, 32, 28);
-    sprGrad.addColorStop(0.0,  'rgba(195, 178, 155, 1.0)');
-    sprGrad.addColorStop(0.45, 'rgba(155, 138, 115, 0.75)');
-    sprGrad.addColorStop(0.80, 'rgba(110, 98,  82,  0.35)');
-    sprGrad.addColorStop(1.0,  'rgba(70,  62,  52,  0.0)');
-    sprCtx.fillStyle = sprGrad;
-    sprCtx.fillRect(0, 0, 64, 64);
-    const sprTex = new THREE.CanvasTexture(sprC);
+    // Build a tight dot sprite texture matching a given rock color.
+    // Gradient radius 18 (out of 32) keeps it compact — distant asteroids should
+    // read as small points, not glowing discs.
+    function makeSpriteTexture(r, g, b) {
+        const c = document.createElement('canvas');
+        c.width = 64; c.height = 64;
+        const ctx = c.getContext('2d');
+        const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 18);
+        grad.addColorStop(0.0,  `rgba(${r}, ${g}, ${b}, 1.0)`);
+        grad.addColorStop(0.50, `rgba(${Math.round(r*0.72)}, ${Math.round(g*0.72)}, ${Math.round(b*0.72)}, 0.65)`);
+        grad.addColorStop(0.85, `rgba(${Math.round(r*0.45)}, ${Math.round(g*0.45)}, ${Math.round(b*0.45)}, 0.20)`);
+        grad.addColorStop(1.0,  `rgba(0, 0, 0, 0.0)`);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 64, 64);
+        return new THREE.CanvasTexture(c);
+    }
 
-    const spriteMat = new THREE.SpriteMaterial({
-        map: sprTex,
-        transparent: true,
-        depthWrite: false,
-    });
+    // Three variants matching the three 3D rock color groups (same thresholds as below).
+    // Dark (75%): rocky gray-brown  Mid (17%): warmer brown  Light (8%): pale gray
+    const spriteMats = [
+        new THREE.SpriteMaterial({ map: makeSpriteTexture( 93,  85,  76), transparent: true, depthWrite: false }),
+        new THREE.SpriteMaterial({ map: makeSpriteTexture(133, 117, 103), transparent: true, depthWrite: false }),
+        new THREE.SpriteMaterial({ map: makeSpriteTexture(182, 172, 160), transparent: true, depthWrite: false }),
+    ];
 
     // Kirkwood gaps at real AU resonance positions (×100 scale)
     // 4:1 @ 2.50 AU, 3:1 @ 2.82 AU, 5:2 @ 2.95 AU, 2:1 @ 3.27 AU
@@ -175,14 +181,18 @@ function _buildBelt(scene, rockNormalTexture, asteroidSpriteTexture) {
         dummy.updateMatrix();
         mesh.setMatrixAt(i, dummy.matrix);
 
-        // Color variation
+        // Color variation — same thresholds drive both 3D rock color and sprite material
         const t = Math.random();
+        let spriteMatIdx;
         if (t < 0.75) {
             color.setRGB(0.32 + Math.random() * 0.10, 0.30 + Math.random() * 0.08, 0.28 + Math.random() * 0.06);
+            spriteMatIdx = 0;
         } else if (t < 0.92) {
             color.setRGB(0.45 + Math.random() * 0.15, 0.40 + Math.random() * 0.12, 0.36 + Math.random() * 0.10);
+            spriteMatIdx = 1;
         } else {
             color.setRGB(0.65 + Math.random() * 0.15, 0.62 + Math.random() * 0.12, 0.60 + Math.random() * 0.10);
+            spriteMatIdx = 2;
         }
         mesh.instanceColor.setXYZ(i, color.r, color.g, color.b);
 
@@ -208,7 +218,7 @@ function _buildBelt(scene, rockNormalTexture, asteroidSpriteTexture) {
             tumbleSpeed,
             tumbleAngle,
             sprite: null,
-            spriteMat
+            spriteMat: spriteMats[spriteMatIdx],
         });
 
         i++;
@@ -251,8 +261,10 @@ export function updateAsteroids(cameraPosition) {
             o.sprite.visible = true;
             o.sprite.position.set(x, y, z);
 
-            // Guaranteed visibility
-            o.sprite.scale.set(o.s * 20, o.s * 20, 1);
+            // Scale sprites to match apparent size of 3D rocks at the LOD boundary.
+            // 3D rocks at farCut (~700 units) subtend ~s/700 radians; ×10 keeps
+            // sprites roughly consistent in screen size without ballooning.
+            o.sprite.scale.set(o.s * 10, o.s * 10, 1);
 
             // Hide instanced mesh
             dummy.position.set(0, -99999, 0);

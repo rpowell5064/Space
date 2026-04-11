@@ -100,9 +100,9 @@ export const MOON_DATA = [
 export const TEXTURE_FILES = {
     Mercury: './textures/2k_mercury.jpg',
     Venus:   './textures/2k_venus_surface.jpg',
-    Earth:   './textures/2k_earth_daymap.jpg',
+    Earth:   './textures/earth_day_4096.jpg',       // 4K NASA Blue Marble
     Mars:    './textures/2k_mars.jpg',
-    Jupiter: './textures/2k_jupiter.jpg',
+    Jupiter: './textures/jupiter_cassini_2k.jpg',   // Cassini true-color image
     Saturn:  './textures/2k_saturn.jpg',
     Uranus:  './textures/2k_uranus.jpg',
     Neptune: './textures/2k_neptune.jpg',
@@ -113,12 +113,19 @@ export const ATMOSPHERE_COLORS = {
     Venus:   0xFFCC88,
     Neptune: 0x2244BB,
     Mars:    0xCC5522,  // rusty ochre dust haze
+    Uranus:  0x88DDCC,  // cyan-teal methane/hydrogen haze
 };
 
-// Per-planet atmosphere tuning — power controls rim tightness, opacity controls density
+// Per-planet atmosphere tuning for createScatteringAtmosphereMaterial.
+// power:       Fresnel exponent — higher = tighter limb rim
+// opacity:     peak alpha at grazing angle
+// scale:       shell radius as a multiple of planet radius
+// mieStrength: Mie lobe — higher on worlds with thick aerosol hazes
+// mieColor:    Mie forward-scatter tint
 export const ATMOSPHERE_CONFIG = {
-    Earth:   { power: 3.0, opacity: 0.80, scale: 1.12 },
-    Venus:   { power: 2.5, opacity: 0.90, scale: 1.12 },
-    Neptune: { power: 3.0, opacity: 0.80, scale: 1.12 },
-    Mars:    { power: 4.5, opacity: 0.55, scale: 1.14 }, // thin CO2 haze + dust
+    Earth:   { power: 3.2, opacity: 0.80, scale: 1.12, mieStrength: 0.55, mieColor: 0xFFEEDD },
+    Venus:   { power: 2.0, opacity: 0.95, scale: 1.16, mieStrength: 0.90, mieColor: 0xFFCC88 },
+    Neptune: { power: 3.0, opacity: 0.75, scale: 1.12, mieStrength: 0.25, mieColor: 0xAADDFF },
+    Mars:    { power: 4.5, opacity: 0.50, scale: 1.14, mieStrength: 0.38, mieColor: 0xFFAA66 },
+    Uranus:  { power: 3.5, opacity: 0.55, scale: 1.10, mieStrength: 0.20, mieColor: 0xCCFFEE },
 };

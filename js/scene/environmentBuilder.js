@@ -5,8 +5,10 @@ export function setupLighting(scene) {
     // Space ambient — dark sides of planets are visible but not washed out
     scene.add(new THREE.AmbientLight(0x334466, 0.75));
 
-    // Sun's radiance — primary scene light; casts shadows up to Saturn's orbit
-    const sunLight = new THREE.PointLight(0xFFEECC, 4.5, 8000);
+    // Sun's radiance — primary scene light; casts shadows up to Saturn's orbit.
+    // 1.8 keeps the lit hemisphere at ~0.54 linear (pre-tonemap) for a mid-albedo
+    // surface, mapping to ~0.70 after ACES — bright but with readable texture detail.
+    const sunLight = new THREE.PointLight(0xFFEECC, 1.8, 8000);
     sunLight.position.set(0, 0, 0);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.width  = 2048;
@@ -17,64 +19,135 @@ export function setupLighting(scene) {
     scene.add(sunLight);
 }
 
+// ── Starfield with twinkle shader ─────────────────────────────────────────────
+// Custom ShaderMaterial replaces PointsMaterial so we can:
+//   • Draw circular discs (default Points are square)
+//   • Animate per-star brightness flicker (twinkle) driven by a time uniform
+//   • Store per-star base size as a vertex attribute for real size variation
+//
+// Why twinkle matters: atmospheric scintillation (real twinkling) breaks the
+// "painted backdrop" feel. In space there is no atmosphere, so we keep the
+// flicker very subtle — it reads as thermal shimmer rather than scintillation.
+
+const _starVertGLSL = /* glsl */`
+    attribute float aSize;
+    attribute float aSeed;
+    varying   vec3  vColor;
+    varying   float vSeed;
+    uniform   float time;
+
+    void main() {
+        vColor = color;
+        vSeed  = aSeed;
+
+        // Per-star twinkle: high-freq noise on brightness injected via pointSize
+        // The multiply on aSize is 1.0 ± 0.18 — subtle, not cartoonish
+        float flicker = 1.0 + 0.18 * sin(time * (2.1 + aSeed * 3.7) + aSeed * 6.28318);
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = aSize * flicker * (600.0 / -mv.z);
+        gl_Position  = projectionMatrix * mv;
+    }
+`;
+
+const _starFragGLSL = /* glsl */`
+    varying vec3  vColor;
+    varying float vSeed;
+
+    void main() {
+        // Soft circular disc: distance from point centre in [0,1]
+        vec2  pc   = gl_PointCoord - 0.5;
+        float dist = length(pc) * 2.0;           // 0 = centre, 1 = edge
+        float alpha = 1.0 - smoothstep(0.55, 1.0, dist);
+        if (alpha < 0.01) discard;
+
+        // Brighter at the very centre — adds a specular-point feel
+        float core  = 1.0 - smoothstep(0.0, 0.30, dist);
+        vec3  col   = vColor + core * vColor * 0.6;
+
+        gl_FragColor = vec4(col, alpha);
+    }
+`;
+
 export function createStars(scene) {
     const starColorOptions = [
-        [0.6, 0.7, 1.0],   // blue-white
-        [1.0, 1.0, 1.0],   // white
-        [1.0, 1.0, 0.8],   // yellow-white
-        [1.0, 0.9, 0.4],   // yellow
-        [1.0, 0.6, 0.3],   // orange
-        [1.0, 0.3, 0.2],   // red
+        [0.62, 0.71, 1.00],  // O/B — blue-white
+        [0.82, 0.90, 1.00],  // A   — white
+        [1.00, 1.00, 0.88],  // F   — yellow-white
+        [1.00, 0.94, 0.50],  // G   — yellow (Sun-like)
+        [1.00, 0.70, 0.28],  // K   — orange
+        [1.00, 0.38, 0.20],  // M   — red dwarf
     ];
 
-    // 8000 small stars
-    const count = 8000;
-    const positions = new Float32Array(count * 3);
-    const colors = new Float32Array(count * 3);
-
-    for (let i = 0; i < count; i++) {
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos(2 * Math.random() - 1);
-        const r = 5000 + Math.random() * 1500;
-        positions[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
-        positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-        positions[i * 3 + 2] = r * Math.cos(phi);
-
-        const c = starColorOptions[Math.floor(Math.random() * starColorOptions.length)];
-        const brightness = 0.5 + Math.random() * 0.5;
-        colors[i * 3]     = c[0] * brightness;
-        colors[i * 3 + 1] = c[1] * brightness;
-        colors[i * 3 + 2] = c[2] * brightness;
+    // Stellar population weighted toward faint G/K/M stars (realistic IMF)
+    const typeWeights = [0.02, 0.08, 0.12, 0.25, 0.28, 0.25];
+    function pickColor() {
+        let r = Math.random();
+        for (let i = 0; i < typeWeights.length; i++) {
+            r -= typeWeights[i];
+            if (r <= 0) return starColorOptions[i];
+        }
+        return starColorOptions[3];
     }
 
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.8, vertexColors: true, sizeAttenuation: true })));
+    function buildLayer(count, rMin, rMax, sizeMin, sizeMax, brightnessMin, brightnessMax) {
+        const positions = new Float32Array(count * 3);
+        const colors    = new Float32Array(count * 3);
+        const sizes     = new Float32Array(count);
+        const seeds     = new Float32Array(count);
 
-    // 200 larger bright stars
-    const brightCount = 200;
-    const brightPos = new Float32Array(brightCount * 3);
-    const brightCol = new Float32Array(brightCount * 3);
+        for (let i = 0; i < count; i++) {
+            const theta = Math.random() * Math.PI * 2;
+            const phi   = Math.acos(2 * Math.random() - 1);
+            const r     = rMin + Math.random() * (rMax - rMin);
+            positions[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+            positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+            positions[i * 3 + 2] = r * Math.cos(phi);
 
-    for (let i = 0; i < brightCount; i++) {
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos(2 * Math.random() - 1);
-        const r = 5000 + Math.random() * 1500;
-        brightPos[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
-        brightPos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-        brightPos[i * 3 + 2] = r * Math.cos(phi);
+            const c  = pickColor();
+            const b  = brightnessMin + Math.random() * (brightnessMax - brightnessMin);
+            colors[i * 3]     = Math.min(1, c[0] * b);
+            colors[i * 3 + 1] = Math.min(1, c[1] * b);
+            colors[i * 3 + 2] = Math.min(1, c[2] * b);
 
-        const c = starColorOptions[Math.floor(Math.random() * starColorOptions.length)];
-        brightCol[i * 3]     = c[0];
-        brightCol[i * 3 + 1] = c[1];
-        brightCol[i * 3 + 2] = c[2];
+            sizes[i] = sizeMin + Math.random() * (sizeMax - sizeMin);
+            seeds[i] = Math.random();  // unique per-star phase seed for twinkle
+        }
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geo.setAttribute('color',    new THREE.Float32BufferAttribute(colors,    3));
+        geo.setAttribute('aSize',    new THREE.Float32BufferAttribute(sizes,     1));
+        geo.setAttribute('aSeed',    new THREE.Float32BufferAttribute(seeds,     1));
+        return geo;
     }
 
-    const brightGeo = new THREE.BufferGeometry();
-    brightGeo.setAttribute('position', new THREE.Float32BufferAttribute(brightPos, 3));
-    brightGeo.setAttribute('color', new THREE.Float32BufferAttribute(brightCol, 3));
-    scene.add(new THREE.Points(brightGeo, new THREE.PointsMaterial({ size: 2.0, vertexColors: true, sizeAttenuation: true })));
+    // Shared shader material — both star layers reuse this, each with its own time ref
+    function makeStarMat() {
+        return new THREE.ShaderMaterial({
+            uniforms:       { time: { value: 0.0 } },
+            vertexShader:   _starVertGLSL,
+            fragmentShader: _starFragGLSL,
+            vertexColors:   true,
+            transparent:    true,
+            depthWrite:     false,
+            blending:       THREE.AdditiveBlending,
+        });
+    }
+
+    // Layer 1: 9000 faint background stars
+    const bgMat = makeStarMat();
+    const bgPoints = new THREE.Points(buildLayer(9000, 5000, 6500, 0.6, 1.8, 0.40, 0.80), bgMat);
+    bgPoints.userData.starMat = bgMat;
+    scene.add(bgPoints);
+
+    // Layer 2: 250 bright foreground stars — large, vivid, twinkle more visibly
+    const fgMat = makeStarMat();
+    const fgPoints = new THREE.Points(buildLayer(250, 5000, 6000, 2.2, 5.5, 0.75, 1.00), fgMat);
+    fgPoints.userData.starMat = fgMat;
+    scene.add(fgPoints);
+
+    // Expose an update handle so main.js can tick time each frame
+    scene.userData.starLayers = [bgMat, fgMat];
 }
 
 // Private noise helpers
